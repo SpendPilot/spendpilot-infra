@@ -1,0 +1,13 @@
+[Unit]
+Description=Business AI backend container
+After=docker.service
+Requires=docker.service
+
+[Service]
+Restart=always
+WorkingDirectory=/opt/business-ai-app
+ExecStart=/usr/bin/docker compose -f docker-compose.prod.yml up backend nginx
+ExecStop=/usr/bin/docker compose -f docker-compose.prod.yml stop backend nginx
+
+[Install]
+WantedBy=multi-user.target

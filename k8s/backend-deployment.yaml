@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spend-control-identity
+  namespace: spend-control
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spend-control-identity
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spend-control-identity
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: spend-control-workload
+      containers:
+        - name: identity
+          image: spendcontrol/backend:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SERVICE_NAME
+              value: identity-service
+            - name: APP_MODULE
+              value: app.service_apps.identity:app
+          envFrom:
+            - configMapRef:
+                name: spend-control-config
+            - secretRef:
+                name: spend-control-secrets
+          ports:
+            - containerPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spend-control-finance
+  namespace: spend-control
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spend-control-finance
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spend-control-finance
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: spend-control-workload
+      containers:
+        - name: finance
+          image: spendcontrol/backend:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SERVICE_NAME
+              value: finance-service
+            - name: APP_MODULE
+              value: app.service_apps.finance:app
+          envFrom:
+            - configMapRef:
+                name: spend-control-config
+            - secretRef:
+                name: spend-control-secrets
+          ports:
+            - containerPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spend-control-documents
+  namespace: spend-control
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spend-control-documents
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spend-control-documents
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: spend-control-workload
+      containers:
+        - name: documents
+          image: spendcontrol/backend:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SERVICE_NAME
+              value: documents-service
+            - name: APP_MODULE
+              value: app.service_apps.documents:app
+          envFrom:
+            - configMapRef:
+                name: spend-control-config
+            - secretRef:
+                name: spend-control-secrets
+          ports:
+            - containerPort: 8000

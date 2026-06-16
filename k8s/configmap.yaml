@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spend-control-config
+  namespace: spend-control
+data:
+  APP_ENV: "production"
+  BACKEND_CORS_ORIGINS: "https://example.z01.azurefd.net"
+  AUTH_MODE: "entra"
+  AZURE_TENANT_ID: "<tenant-id>"
+  AZURE_CLIENT_ID: "<workload-identity-client-id>"
+  ENTRA_FRONTEND_CLIENT_ID: "<frontend-client-id>"
+  ENTRA_BACKEND_CLIENT_ID: "<backend-client-id>"
+  ENTRA_BACKEND_AUDIENCE: "api://<backend-app-id-uri>"
+  ENTRA_AUTHORITY: "https://login.microsoftonline.com/common"
+  ENTRA_ALLOWED_TENANT_IDS: ""
+  PLATFORM_ADMIN_EMAILS: "finance-admin@example.com"
+  AZURE_AI_FOUNDRY_ENDPOINT: "https://<foundry-account>.openai.azure.com"
+  AZURE_AI_PROJECT_ENDPOINT: ""
+  AZURE_AI_MODEL_DEPLOYMENT: "gpt-4o-mini"
+  AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: "https://<document-intelligence>.cognitiveservices.azure.com"
+  AZURE_STORAGE_ACCOUNT_URL: "https://<storage-account>.blob.core.windows.net"
+  AZURE_STORAGE_CONTAINER_NAME: "expense-documents"
+  FINANCE_DEFAULT_CURRENCY: "INR"
+  NEXT_PUBLIC_API_BASE_URL: "/api"
+  NEXT_PUBLIC_AUTH_MODE: "entra"
+  NEXT_PUBLIC_ENTRA_FRONTEND_CLIENT_ID: "<frontend-client-id>"
+  NEXT_PUBLIC_ENTRA_BACKEND_CLIENT_ID: "<backend-client-id>"
+  NEXT_PUBLIC_ENTRA_BACKEND_AUDIENCE: "api://<backend-app-id-uri>"
+  NEXT_PUBLIC_ENTRA_API_SCOPE: "api://<backend-app-id-uri>/access_as_user"
+  NEXT_PUBLIC_ENTRA_AUTHORITY: "https://login.microsoftonline.com/common"

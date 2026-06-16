@@ -1,0 +1,49 @@
+services:
+  frontend:
+    image: businessai/frontend:latest
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: /api
+      NEXT_PUBLIC_AUTH_MODE: entra
+      NEXT_PUBLIC_ENTRA_FRONTEND_CLIENT_ID: ${NEXT_PUBLIC_ENTRA_FRONTEND_CLIENT_ID}
+      NEXT_PUBLIC_ENTRA_BACKEND_CLIENT_ID: ${NEXT_PUBLIC_ENTRA_BACKEND_CLIENT_ID}
+      NEXT_PUBLIC_ENTRA_API_SCOPE: ${NEXT_PUBLIC_ENTRA_API_SCOPE}
+      NEXT_PUBLIC_ENTRA_AUTHORITY: ${NEXT_PUBLIC_ENTRA_AUTHORITY}
+
+  backend:
+    image: businessai/backend:latest
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS}
+      AUTH_MODE: entra
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+      ENTRA_FRONTEND_CLIENT_ID: ${ENTRA_FRONTEND_CLIENT_ID}
+      ENTRA_BACKEND_CLIENT_ID: ${ENTRA_BACKEND_CLIENT_ID}
+      ENTRA_BACKEND_AUDIENCE: ${ENTRA_BACKEND_AUDIENCE}
+      ENTRA_AUTHORITY: ${ENTRA_AUTHORITY}
+      AZURE_AI_FOUNDRY_ENDPOINT: ${AZURE_AI_FOUNDRY_ENDPOINT}
+      AZURE_AI_PROJECT_ENDPOINT: ${AZURE_AI_PROJECT_ENDPOINT}
+      AZURE_AI_MODEL_DEPLOYMENT: ${AZURE_AI_MODEL_DEPLOYMENT}
+      AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: ${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT}
+      AZURE_STORAGE_ACCOUNT_URL: ${AZURE_STORAGE_ACCOUNT_URL}
+      AZURE_STORAGE_CONTAINER_NAME: ${AZURE_STORAGE_CONTAINER_NAME}
+      LOCAL_UPLOAD_DIR: /app/data/uploads
+    volumes:
+      - backend-data:/app/data
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf.example:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  backend-data:

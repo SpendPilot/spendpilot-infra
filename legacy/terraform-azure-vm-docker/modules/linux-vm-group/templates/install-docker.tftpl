@@ -1,0 +1,225 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - gnupg
+  - lsb-release
+  - jq
+
+write_files:
+  - path: /etc/spend-control-role
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${node_role}
+%{ if postgres_enabled || ollama_enabled }
+  - path: /opt/spend-control/data-ai/docker-compose.yml
+    permissions: "0644"
+    owner: root:root
+    content: |
+      services:
+%{ if postgres_enabled }
+        postgres:
+          image: ${postgres_image}
+          container_name: spend-control-postgres
+          restart: unless-stopped
+          environment:
+            POSTGRES_DB: ${postgres_db}
+            POSTGRES_USER: ${postgres_user}
+            POSTGRES_PASSWORD: ${postgres_password}
+          ports:
+            - "${postgres_port}:5432"
+          volumes:
+            - /var/lib/spend-control/postgres:/var/lib/postgresql/data
+          healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${postgres_user} -d ${postgres_db}"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+%{ endif }
+%{ if ollama_enabled }
+        ollama:
+          image: ${ollama_image}
+          container_name: spend-control-ollama
+          restart: unless-stopped
+          ports:
+            - "${ollama_port}:11434"
+          volumes:
+            - /var/lib/spend-control/ollama:/root/.ollama
+%{ endif }
+%{ endif }
+%{ if node_role == "frontend" }
+  - path: /opt/spend-control/bootstrap/frontend.env
+    permissions: "0600"
+    owner: root:root
+    content: |
+      NODE_ENV=${bootstrap_app_env}
+      NEXT_PUBLIC_API_BASE_URL=
+
+  - path: /opt/spend-control/bootstrap/start-frontend.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      base=/opt/spend-control/deploy
+      mkdir -p "$base"
+
+      wait_for_docker() {
+        for i in $(seq 1 30); do
+          if docker info >/dev/null 2>&1; then
+            return 0
+          fi
+          sleep 2
+        done
+        echo "Docker daemon did not become ready in time."
+        return 1
+      }
+
+      clone_or_update() {
+        repo="$1"
+        target="$2"
+        if [ ! -d "$target/.git" ]; then
+          git clone --depth 1 --branch ${bootstrap_repo_branch} https://github.com/${bootstrap_repo_owner}/"$repo".git "$target"
+        else
+          git -C "$target" fetch origin ${bootstrap_repo_branch}
+          git -C "$target" reset --hard origin/${bootstrap_repo_branch}
+        fi
+      }
+
+      wait_for_docker
+      clone_or_update spend-control-platform "$base/spend-control-platform"
+      clone_or_update spend-control-frontend "$base/spend-control-frontend"
+
+      cd "$base/spend-control-platform"
+      docker compose --env-file /opt/spend-control/bootstrap/frontend.env -f docker-compose.frontend.yml up -d --build
+%{ endif }
+%{ if node_role == "backend" }
+  - path: /opt/spend-control/bootstrap/backend.env
+    permissions: "0600"
+    owner: root:root
+    content: |
+      APP_ENV=${bootstrap_app_env}
+      CORS_ORIGINS=${bootstrap_public_base_url}
+      JWT_SECRET_KEY=${bootstrap_jwt_secret_key}
+      DATABASE_URL=postgresql+psycopg://${postgres_user}:${postgres_password}@${bootstrap_data_vm_private_ip}:${postgres_port}/${postgres_db}
+      OLLAMA_BASE_URL=http://${bootstrap_data_vm_private_ip}:${ollama_port}
+      OLLAMA_MODEL=${ollama_model}
+      OLLAMA_REQUEST_TIMEOUT=30
+      EXPENSE_SERVICE_URL=http://expense-service:8001
+      AI_SERVICE_URL=http://ai-service:8002
+      RECEIPT_REQUIRED_THRESHOLD=75
+      UPLOAD_DIR=/data/uploads
+
+  - path: /opt/spend-control/bootstrap/start-backend.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      base=/opt/spend-control/deploy
+      mkdir -p "$base"
+
+      wait_for_docker() {
+        for i in $(seq 1 30); do
+          if docker info >/dev/null 2>&1; then
+            return 0
+          fi
+          sleep 2
+        done
+        echo "Docker daemon did not become ready in time."
+        return 1
+      }
+
+      wait_for_tcp() {
+        host="$1"
+        port="$2"
+        label="$3"
+        for i in $(seq 1 60); do
+          if timeout 2 bash -lc "</dev/tcp/$host/$port" >/dev/null 2>&1; then
+            return 0
+          fi
+          echo "Waiting for $label at $host:$port ($i/60)..."
+          sleep 5
+        done
+        echo "Timed out waiting for $label."
+        return 1
+      }
+
+      wait_for_http() {
+        url="$1"
+        label="$2"
+        for i in $(seq 1 60); do
+          if curl -fsS "$url" >/dev/null 2>&1; then
+            return 0
+          fi
+          echo "Waiting for $label at $url ($i/60)..."
+          sleep 5
+        done
+        echo "Timed out waiting for $label."
+        return 1
+      }
+
+      clone_or_update() {
+        repo="$1"
+        target="$2"
+        if [ ! -d "$target/.git" ]; then
+          git clone --depth 1 --branch ${bootstrap_repo_branch} https://github.com/${bootstrap_repo_owner}/"$repo".git "$target"
+        else
+          git -C "$target" fetch origin ${bootstrap_repo_branch}
+          git -C "$target" reset --hard origin/${bootstrap_repo_branch}
+        fi
+      }
+
+      wait_for_docker
+      wait_for_tcp ${bootstrap_data_vm_private_ip} ${postgres_port} "PostgreSQL"
+      wait_for_http http://${bootstrap_data_vm_private_ip}:${ollama_port}/api/tags "Ollama"
+
+      clone_or_update spend-control-platform "$base/spend-control-platform"
+      clone_or_update spend-control-control-service "$base/spend-control-control-service"
+      clone_or_update spend-control-expense-service "$base/spend-control-expense-service"
+      clone_or_update spend-control-ai-service "$base/spend-control-ai-service"
+
+      cd "$base/spend-control-platform"
+      docker compose --env-file /opt/spend-control/bootstrap/backend.env -f docker-compose.backend.yml up -d --build
+%{ endif }
+
+runcmd:
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /tmp/docker.asc
+  - chmod a+r /tmp/docker.asc
+  - gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.asc
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - systemctl enable docker
+  - systemctl start docker
+  - usermod -aG docker ubuntu || true
+  - usermod -aG docker azureuser || true
+  - mkdir -p /opt/spend-control
+  - echo "Docker ready for ${node_role} node" > /opt/spend-control/README.txt
+%{ if postgres_enabled || ollama_enabled }
+  - mkdir -p /opt/spend-control/data-ai
+%{ endif }
+%{ if postgres_enabled }
+  - mkdir -p /var/lib/spend-control/postgres
+%{ endif }
+%{ if ollama_enabled }
+  - mkdir -p /var/lib/spend-control/ollama
+%{ endif }
+%{ if postgres_enabled || ollama_enabled }
+  - docker compose -f /opt/spend-control/data-ai/docker-compose.yml up -d
+%{ endif }
+%{ if ollama_enabled }
+  - bash -lc 'for i in $(seq 1 30); do curl -fsS http://127.0.0.1:${ollama_port}/api/tags >/dev/null && break; sleep 5; done'
+  - docker exec spend-control-ollama ollama pull ${ollama_model}
+%{ endif }
+%{ if node_role == "frontend" }
+  - bash /opt/spend-control/bootstrap/start-frontend.sh
+%{ endif }
+%{ if node_role == "backend" }
+  - bash /opt/spend-control/bootstrap/start-backend.sh
+%{ endif }

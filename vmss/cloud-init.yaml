@@ -1,0 +1,13 @@
+#cloud-config
+package_update: true
+package_upgrade: false
+packages:
+  - ca-certificates
+  - curl
+  - docker.io
+  - docker-compose-v2
+  - nginx
+runcmd:
+  - systemctl enable docker
+  - systemctl start docker
+  - mkdir -p /opt/business-ai-app

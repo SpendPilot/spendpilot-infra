@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spend-control-migrate
+  namespace: spend-control
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: spend-control-workload
+      containers:
+        - name: migrate
+          image: spendcontrol/backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "alembic upgrade head"]
+          env:
+            - name: SERVICE_NAME
+              value: migration-job
+          envFrom:
+            - configMapRef:
+                name: spend-control-config
+            - secretRef:
+                name: spend-control-secrets

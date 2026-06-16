@@ -1,0 +1,249 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - gnupg
+  - lsb-release
+  - jq
+
+write_files:
+  - path: /etc/spend-control-role
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${node_role}
+  - path: /opt/spend-control/bootstrap/common.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      retry() {
+        local attempts="$1"
+        shift
+        local delay="$1"
+        shift
+
+        local i=1
+        while true; do
+          if "$@"; then
+            return 0
+          fi
+          if [ "$i" -ge "$attempts" ]; then
+            echo "Command failed after $attempts attempts: $*"
+            return 1
+          fi
+          echo "Command failed (attempt $i/$attempts): $*"
+          sleep "$delay"
+          i=$((i + 1))
+        done
+      }
+
+      install_docker_stack() {
+        export DEBIAN_FRONTEND=noninteractive
+        install -m 0755 -d /etc/apt/keyrings
+        retry 5 10 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /tmp/docker.asc
+        chmod a+r /tmp/docker.asc
+        gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.asc
+        chmod a+r /etc/apt/keyrings/docker.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+        retry 5 15 apt-get update
+        retry 5 15 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        systemctl enable docker
+        systemctl restart docker
+        usermod -aG docker ubuntu || true
+        usermod -aG docker azureuser || true
+        usermod -aG docker ${admin_username} || true
+        command -v docker >/dev/null 2>&1
+      }
+
+      wait_for_docker() {
+        for i in $(seq 1 60); do
+          if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+            return 0
+          fi
+          echo "Waiting for Docker daemon ($i/60)..."
+          sleep 5
+        done
+        echo "Docker daemon did not become ready in time."
+        return 1
+      }
+%{ if ollama_enabled }
+  - path: /opt/spend-control/data-ai/docker-compose.yml
+    permissions: "0644"
+    owner: root:root
+    content: |
+      services:
+        ollama:
+          image: ${ollama_image}
+          container_name: spend-control-ollama
+          restart: unless-stopped
+          ports:
+            - "${ollama_port}:11434"
+          volumes:
+            - /var/lib/spend-control/ollama:/root/.ollama
+%{ endif }
+%{ if node_role == "frontend" }
+  - path: /opt/spend-control/bootstrap/frontend.env
+    permissions: "0600"
+    owner: root:root
+    content: |
+      NODE_ENV=${bootstrap_app_env}
+      NEXT_PUBLIC_API_BASE_URL=${bootstrap_public_api_base_url}
+
+  - path: /opt/spend-control/bootstrap/start-frontend.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      source /opt/spend-control/bootstrap/common.sh
+      base=/opt/spend-control/deploy
+      mkdir -p "$base"
+
+      clone_or_update() {
+        repo="$1"
+        target="$2"
+        if [ ! -d "$target/.git" ]; then
+          git clone --depth 1 --branch ${bootstrap_repo_branch} https://github.com/${bootstrap_repo_owner}/"$repo".git "$target"
+        else
+          git -C "$target" fetch origin ${bootstrap_repo_branch}
+          git -C "$target" reset --hard origin/${bootstrap_repo_branch}
+        fi
+      }
+
+      install_docker_stack
+      wait_for_docker
+      clone_or_update spend-control-platform "$base/spend-control-platform"
+      clone_or_update spend-control-frontend "$base/spend-control-frontend"
+
+      cd "$base/spend-control-platform"
+      docker compose --env-file /opt/spend-control/bootstrap/frontend.env -f docker-compose.frontend.yml up -d --build
+%{ endif }
+%{ if node_role == "backend" }
+  - path: /opt/spend-control/bootstrap/backend.env
+    permissions: "0600"
+    owner: root:root
+    content: |
+      APP_ENV=${bootstrap_app_env}
+      CORS_ORIGINS=${bootstrap_public_base_url}
+      JWT_SECRET_KEY=${bootstrap_jwt_secret_key}
+      DATABASE_URL=${bootstrap_database_url}
+      OLLAMA_BASE_URL=${bootstrap_ollama_base_url}
+      OLLAMA_MODEL=${ollama_model}
+      OLLAMA_REQUEST_TIMEOUT=${bootstrap_ollama_timeout}
+      EXPENSE_SERVICE_URL=${bootstrap_expense_service_url}
+      AI_SERVICE_URL=${bootstrap_ai_service_url}
+      RECEIPT_REQUIRED_THRESHOLD=${bootstrap_receipt_threshold}
+      UPLOAD_DIR=${bootstrap_upload_dir}
+
+  - path: /opt/spend-control/bootstrap/start-backend.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      source /opt/spend-control/bootstrap/common.sh
+      base=/opt/spend-control/deploy
+      mkdir -p "$base"
+
+      wait_for_tcp() {
+        host="$1"
+        port="$2"
+        label="$3"
+        for i in $(seq 1 60); do
+          if timeout 2 bash -lc "</dev/tcp/$host/$port" >/dev/null 2>&1; then
+            return 0
+          fi
+          echo "Waiting for $label at $host:$port ($i/60)..."
+          sleep 5
+        done
+        echo "Timed out waiting for $label."
+        return 1
+      }
+
+      wait_for_http() {
+        url="$1"
+        label="$2"
+        for i in $(seq 1 60); do
+          if curl --connect-timeout 2 --max-time 5 -fsS "$url" >/dev/null 2>&1; then
+            return 0
+          fi
+          echo "Waiting for $label at $url ($i/60)..."
+          sleep 5
+        done
+        echo "Timed out waiting for $label."
+        return 1
+      }
+
+      clone_or_update() {
+        repo="$1"
+        target="$2"
+        if [ ! -d "$target/.git" ]; then
+          git clone --depth 1 --branch ${bootstrap_repo_branch} https://github.com/${bootstrap_repo_owner}/"$repo".git "$target"
+        else
+          git -C "$target" fetch origin ${bootstrap_repo_branch}
+          git -C "$target" reset --hard origin/${bootstrap_repo_branch}
+        fi
+      }
+
+      install_docker_stack
+      wait_for_docker
+      wait_for_tcp ${bootstrap_database_host} ${bootstrap_database_port} "PostgreSQL"
+      if ! wait_for_http ${bootstrap_ollama_base_url}/api/tags "Ollama"; then
+        echo "Ollama is not ready yet. Continuing backend startup without blocking on it."
+      fi
+
+      clone_or_update spend-control-platform "$base/spend-control-platform"
+      clone_or_update spend-control-control-service "$base/spend-control-control-service"
+      clone_or_update spend-control-expense-service "$base/spend-control-expense-service"
+      clone_or_update spend-control-ai-service "$base/spend-control-ai-service"
+
+      cd "$base/spend-control-platform"
+      docker compose --env-file /opt/spend-control/bootstrap/backend.env -f docker-compose.backend.yml up -d --build
+%{ endif }
+%{ if ollama_enabled }
+  - path: /opt/spend-control/bootstrap/start-data-ai.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      source /opt/spend-control/bootstrap/common.sh
+
+      install_docker_stack
+      wait_for_docker
+
+      mkdir -p /opt/spend-control/data-ai
+      mkdir -p /var/lib/spend-control/ollama
+      docker compose -f /opt/spend-control/data-ai/docker-compose.yml up -d
+
+      for i in $(seq 1 60); do
+        if curl -fsS http://127.0.0.1:${ollama_port}/api/tags >/dev/null 2>&1; then
+          break
+        fi
+        echo "Waiting for local Ollama API (attempt $i/60)..."
+        sleep 5
+      done
+
+      curl -fsS http://127.0.0.1:${ollama_port}/api/tags >/dev/null
+      docker exec spend-control-ollama ollama pull ${ollama_model}
+%{ endif }
+
+runcmd:
+  - mkdir -p /opt/spend-control
+  - mkdir -p /opt/spend-control/bootstrap
+  - echo "Docker ready for ${node_role} node" > /opt/spend-control/README.txt
+%{ if ollama_enabled }
+  - bash /opt/spend-control/bootstrap/start-data-ai.sh
+%{ endif }
+%{ if node_role == "frontend" }
+  - bash /opt/spend-control/bootstrap/start-frontend.sh
+%{ endif }
+%{ if node_role == "backend" }
+  - bash /opt/spend-control/bootstrap/start-backend.sh
+%{ endif }
