@@ -351,17 +351,51 @@ provider "helm" {
   }
 }
 
-resource "terraform_data" "build_backend_image" {
+resource "terraform_data" "build_identity_image" {
   count = var.build_images_during_apply ? 1 : 0
 
   triggers_replace = {
     image_tag  = var.image_tag
-    dockerfile = filesha256("${path.root}/../../../spendpilot-services/Dockerfile")
+    dockerfile = filesha256("${path.root}/../../../spendpilot-services/services/identity/Dockerfile")
     source     = local.backend_source_hash
   }
 
   provisioner "local-exec" {
-    command = "az acr build --registry ${module.container_registry.name} --image spend-control-backend:${var.image_tag} ${path.root}/../../../spendpilot-services"
+    command = "az acr build --registry ${module.container_registry.name} --image spend-control-identity:${var.image_tag} --file ${path.root}/../../../spendpilot-services/services/identity/Dockerfile ${path.root}/../../../spendpilot-services"
+    environment = {
+      AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
+    }
+  }
+}
+
+resource "terraform_data" "build_finance_image" {
+  count = var.build_images_during_apply ? 1 : 0
+
+  triggers_replace = {
+    image_tag  = var.image_tag
+    dockerfile = filesha256("${path.root}/../../../spendpilot-services/services/finance/Dockerfile")
+    source     = local.backend_source_hash
+  }
+
+  provisioner "local-exec" {
+    command = "az acr build --registry ${module.container_registry.name} --image spend-control-finance:${var.image_tag} --file ${path.root}/../../../spendpilot-services/services/finance/Dockerfile ${path.root}/../../../spendpilot-services"
+    environment = {
+      AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
+    }
+  }
+}
+
+resource "terraform_data" "build_documents_image" {
+  count = var.build_images_during_apply ? 1 : 0
+
+  triggers_replace = {
+    image_tag  = var.image_tag
+    dockerfile = filesha256("${path.root}/../../../spendpilot-services/services/documents/Dockerfile")
+    source     = local.backend_source_hash
+  }
+
+  provisioner "local-exec" {
+    command = "az acr build --registry ${module.container_registry.name} --image spend-control-documents:${var.image_tag} --file ${path.root}/../../../spendpilot-services/services/documents/Dockerfile ${path.root}/../../../spendpilot-services"
     environment = {
       AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
     }
@@ -536,21 +570,21 @@ resource "helm_release" "application" {
       }
       identityService = {
         image = {
-          repository = local.backend_repo
+          repository = local.identity_repo
           tag        = var.image_tag
           pullPolicy = var.image_tag == "latest" ? "Always" : "IfNotPresent"
         }
       }
       financeService = {
         image = {
-          repository = local.backend_repo
+          repository = local.finance_repo
           tag        = var.image_tag
           pullPolicy = var.image_tag == "latest" ? "Always" : "IfNotPresent"
         }
       }
       documentsService = {
         image = {
-          repository = local.backend_repo
+          repository = local.documents_repo
           tag        = var.image_tag
           pullPolicy = var.image_tag == "latest" ? "Always" : "IfNotPresent"
         }
@@ -558,7 +592,7 @@ resource "helm_release" "application" {
       migrationJob = {
         enabled = true
         image = {
-          repository = local.backend_repo
+          repository = local.identity_repo
           tag        = var.image_tag
           pullPolicy = var.image_tag == "latest" ? "Always" : "IfNotPresent"
         }
@@ -604,7 +638,9 @@ resource "helm_release" "application" {
     azurerm_role_assignment.docint_user,
     azurerm_role_assignment.foundry_user,
     terraform_data.gateway_origin_tls_secret,
-    terraform_data.build_backend_image,
+    terraform_data.build_identity_image,
+    terraform_data.build_finance_image,
+    terraform_data.build_documents_image,
     terraform_data.build_frontend_image,
   ]
 }

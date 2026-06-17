@@ -17,13 +17,11 @@ spec:
       serviceAccountName: spend-control-workload
       containers:
         - name: identity
-          image: spendcontrol/backend:latest
+          image: spendcontrol/identity:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: SERVICE_NAME
               value: identity-service
-            - name: APP_MODULE
-              value: app.service_apps.identity:app
           envFrom:
             - configMapRef:
                 name: spend-control-config
@@ -51,13 +49,11 @@ spec:
       serviceAccountName: spend-control-workload
       containers:
         - name: finance
-          image: spendcontrol/backend:latest
+          image: spendcontrol/finance:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: SERVICE_NAME
               value: finance-service
-            - name: APP_MODULE
-              value: app.service_apps.finance:app
           envFrom:
             - configMapRef:
                 name: spend-control-config
@@ -85,13 +81,11 @@ spec:
       serviceAccountName: spend-control-workload
       containers:
         - name: documents
-          image: spendcontrol/backend:latest
+          image: spendcontrol/documents:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: SERVICE_NAME
               value: documents-service
-            - name: APP_MODULE
-              value: app.service_apps.documents:app
           envFrom:
             - configMapRef:
                 name: spend-control-config

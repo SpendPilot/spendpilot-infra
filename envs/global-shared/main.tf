@@ -21,9 +21,10 @@ module "container_registry" {
   count  = var.create_acr ? 1 : 0
   source = "../../modules/container-registry"
 
-  name                = var.acr_name != "" ? var.acr_name : substr("${local.compact_name}acr", 0, 50)
-  location            = module.resource_group.location
-  resource_group_name = module.resource_group.name
-  sku                 = var.acr_sku
-  tags                = local.tags
+  name                   = var.acr_name != "" ? var.acr_name : substr("${local.compact_name}acr", 0, 50)
+  location               = module.resource_group.location
+  resource_group_name    = module.resource_group.name
+  sku                    = var.acr_sku
+  anonymous_pull_enabled = var.acr_anonymous_pull_enabled
+  tags                   = local.tags
 }

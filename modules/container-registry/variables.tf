@@ -20,6 +20,11 @@ variable "admin_enabled" {
   default = false
 }
 
+variable "anonymous_pull_enabled" {
+  type    = bool
+  default = false
+}
+
 variable "public_network_access_enabled" {
   type    = bool
   default = true

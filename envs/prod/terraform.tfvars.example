@@ -1,0 +1,26 @@
+resource_group_name          = "rg-spendpilot-prod"
+aks_node_resource_group_name = "rg-spendpilot-prod-aks-nodes"
+
+# Required secret value.
+postgres_admin_password = "replace-me"
+
+# Stable runtime object names consumed by the prod chart.
+app_config_map_name = "spend-control-config"
+app_secret_name     = "spend-control-secrets"
+
+# Runtime config injected by Terraform into the in-cluster ConfigMap/Secret.
+auth_authority         = "https://login.microsoftonline.com/common"
+backend_cors_origins   = "https://example.z01.azurefd.net"
+frontend_api_base_url  = "/api"
+finance_default_currency = "INR"
+dev_auth_secret        = "disabled-in-production"
+
+# Optional hardening for public AKS API access.
+authorized_ip_ranges = []
+
+# Shared ACR from global-shared.
+acr_name                = "spendpilotacr"
+acr_resource_group_name = "rg-spendpilot-global"
+
+# Argo CD server exposure.
+argocd_server_service_type = "LoadBalancer"

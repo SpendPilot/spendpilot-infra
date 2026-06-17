@@ -4,7 +4,9 @@ locals {
   alnum_name                     = replace(local.name, "-", "")
   rg_name                        = var.resource_group_name
   frontend_repo                  = "${module.container_registry.login_server}/spend-control-frontend"
-  backend_repo                   = "${module.container_registry.login_server}/spend-control-backend"
+  identity_repo                  = "${module.container_registry.login_server}/spend-control-identity"
+  finance_repo                   = "${module.container_registry.login_server}/spend-control-finance"
+  documents_repo                 = "${module.container_registry.login_server}/spend-control-documents"
   gateway_origin_tls_secret_name = "spend-control-gateway-origin-tls"
 
   backend_audience = "api://${local.name}-api"

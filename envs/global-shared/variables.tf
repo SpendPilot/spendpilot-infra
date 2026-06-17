@@ -34,6 +34,12 @@ variable "acr_sku" {
   default     = "Standard"
 }
 
+variable "acr_anonymous_pull_enabled" {
+  description = "Allow anonymous pull access to the shared ACR."
+  type        = bool
+  default     = false
+}
+
 variable "create_acr" {
   description = "Create the shared ACR from this root."
   type        = bool

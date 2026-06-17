@@ -1,0 +1,11 @@
+# Local Terraform provider cache/binaries
+**/.terraform/providers/
+**/.terraform/**/*.exe
+**/.terraform/terraform.tfstate
+**/.terraform/terraform.tfstate.*
+**/.terraform/modules/
+**/.terraform/modules/modules.json
+**/.terraform-provider-mirror-test/
+**/.terraform-provider-mirror-test/**/*.zip
+*.tfplan
+plan
