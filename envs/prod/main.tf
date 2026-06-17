@@ -84,26 +84,29 @@ module "postgres" {
 module "aks_cluster" {
   source = "../../modules/aks-cluster"
 
-  name                       = "${local.name}-aks"
-  location                   = module.resource_group.location
-  resource_group_name        = module.resource_group.name
-  dns_prefix                 = "${local.name}-dns"
-  kubernetes_version         = var.kubernetes_version
-  private_cluster_enabled    = var.private_cluster_enabled
-  authorized_ip_ranges       = var.authorized_ip_ranges
-  log_analytics_workspace_id = module.log_analytics.id
-  system_subnet_id           = module.network.subnet_ids["aks-subnet"]
-  user_subnet_id             = module.network.subnet_ids["aks-subnet"]
-  system_node_vm_size        = var.system_node_vm_size
-  system_node_min_count      = var.system_node_min_count
-  system_node_max_count      = var.system_node_max_count
-  user_node_vm_size          = var.user_node_vm_size
-  user_node_min_count        = var.user_node_min_count
-  user_node_max_count        = var.user_node_max_count
-  node_resource_group_name   = var.aks_node_resource_group_name
-  service_cidr               = var.service_cidr
-  dns_service_ip             = var.dns_service_ip
-  tags                       = local.tags
+  name                               = "${local.name}-aks"
+  location                           = module.resource_group.location
+  resource_group_name                = module.resource_group.name
+  dns_prefix                         = "${local.name}-dns"
+  kubernetes_version                 = var.kubernetes_version
+  private_cluster_enabled            = var.private_cluster_enabled
+  authorized_ip_ranges               = var.authorized_ip_ranges
+  log_analytics_workspace_id         = module.log_analytics.id
+  system_subnet_id                   = module.network.subnet_ids["aks-subnet"]
+  user_subnet_id                     = module.network.subnet_ids["aks-subnet"]
+  system_node_vm_size                = var.system_node_vm_size
+  system_node_min_count              = var.system_node_min_count
+  system_node_max_count              = var.system_node_max_count
+  user_node_vm_size                  = var.user_node_vm_size
+  user_node_min_count                = var.user_node_min_count
+  user_node_max_count                = var.user_node_max_count
+  node_resource_group_name           = var.aks_node_resource_group_name
+  service_cidr                       = var.service_cidr
+  dns_service_ip                     = var.dns_service_ip
+  key_vault_secrets_provider_enabled = var.key_vault_secrets_provider_enabled
+  secret_rotation_enabled            = var.key_vault_secret_rotation_enabled
+  secret_rotation_interval           = var.key_vault_secret_rotation_interval
+  tags                               = local.tags
 
   depends_on = [azurerm_log_analytics_solution.container_insights]
 }
@@ -119,6 +122,19 @@ resource "azurerm_user_assigned_identity" "workload" {
   location            = module.resource_group.location
   resource_group_name = module.resource_group.name
   tags                = local.tags
+}
+
+resource "azurerm_key_vault" "workload" {
+  name                          = local.key_vault_name
+  location                      = module.resource_group.location
+  resource_group_name           = module.resource_group.name
+  tenant_id                     = data.azurerm_client_config.current.tenant_id
+  sku_name                      = var.key_vault_sku_name
+  rbac_authorization_enabled    = true
+  public_network_access_enabled = var.key_vault_public_network_access_enabled
+  purge_protection_enabled      = true
+  soft_delete_retention_days    = 90
+  tags                          = local.tags
 }
 
 resource "azurerm_federated_identity_credential" "workload" {
@@ -246,6 +262,18 @@ resource "azurerm_role_assignment" "foundry_user" {
   principal_id         = azurerm_user_assigned_identity.workload.principal_id
 }
 
+resource "azurerm_role_assignment" "key_vault_secrets_user" {
+  scope                = azurerm_key_vault.workload.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.workload.principal_id
+}
+
+resource "azurerm_role_assignment" "key_vault_secrets_officer_current_user" {
+  scope                = azurerm_key_vault.workload.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
 resource "kubernetes_config_map_v1" "spendpilot" {
   metadata {
     name      = var.app_config_map_name
@@ -285,25 +313,6 @@ resource "kubernetes_config_map_v1" "spendpilot" {
     kubernetes_namespace_v1.spendpilot,
     azuread_application.frontend_spa,
     azuread_application.backend_api,
-  ]
-}
-
-resource "kubernetes_secret_v1" "spendpilot" {
-  metadata {
-    name      = var.app_secret_name
-    namespace = kubernetes_namespace_v1.spendpilot.metadata[0].name
-  }
-
-  type = "Opaque"
-
-  data = {
-    DATABASE_URL    = local.database_url
-    DEV_AUTH_SECRET = var.dev_auth_secret
-  }
-
-  depends_on = [
-    terraform_data.aks_get_credentials,
-    kubernetes_namespace_v1.spendpilot,
   ]
 }
 
@@ -520,4 +529,13 @@ resource "helm_release" "argocd" {
 resource "time_sleep" "wait_for_argocd_service" {
   depends_on      = [helm_release.argocd]
   create_duration = "90s"
+}
+
+data "kubernetes_service_v1" "argocd_server" {
+  metadata {
+    name      = local.argocd_server_service_name
+    namespace = var.argocd_namespace
+  }
+
+  depends_on = [time_sleep.wait_for_argocd_service]
 }

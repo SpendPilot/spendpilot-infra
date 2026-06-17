@@ -5,6 +5,7 @@ locals {
 
   aks_context_name = "${local.name}-aks"
   database_url     = "postgresql+psycopg://${var.postgres_admin_login}:${var.postgres_admin_password}@${module.postgres.fqdn}:5432/${module.postgres.database_name}?sslmode=require"
+  key_vault_name   = trimspace(var.key_vault_name) != "" ? trimspace(var.key_vault_name) : substr("${local.name}-kv", 0, 24)
   frontend_redirect_uris = distinct(
     var.frontend_redirect_uris
   )

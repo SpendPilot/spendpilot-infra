@@ -79,3 +79,18 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "key_vault_secrets_provider_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "secret_rotation_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "secret_rotation_interval" {
+  type    = string
+  default = "2m"
+}

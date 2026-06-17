@@ -15,10 +15,21 @@ spec:
         azure.workload.identity/use: "true"
     spec:
       serviceAccountName: spend-control-workload
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: spend-control-secrets-provider
       containers:
         - name: identity
           image: spendcontrol/identity:latest
           imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
           env:
             - name: SERVICE_NAME
               value: identity-service
@@ -47,10 +58,21 @@ spec:
         azure.workload.identity/use: "true"
     spec:
       serviceAccountName: spend-control-workload
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: spend-control-secrets-provider
       containers:
         - name: finance
           image: spendcontrol/finance:latest
           imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
           env:
             - name: SERVICE_NAME
               value: finance-service
@@ -79,10 +101,21 @@ spec:
         azure.workload.identity/use: "true"
     spec:
       serviceAccountName: spend-control-workload
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: spend-control-secrets-provider
       containers:
         - name: documents
           image: spendcontrol/documents:latest
           imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
           env:
             - name: SERVICE_NAME
               value: documents-service

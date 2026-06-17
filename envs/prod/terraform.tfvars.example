@@ -7,6 +7,7 @@ postgres_admin_password = "replace-me"
 # Stable runtime object names consumed by the prod chart.
 app_config_map_name = "spend-control-config"
 app_secret_name     = "spend-control-secrets"
+key_vault_name      = ""
 
 # Runtime config injected by Terraform into the in-cluster ConfigMap/Secret.
 auth_authority         = "https://login.microsoftonline.com/common"

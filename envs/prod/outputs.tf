@@ -30,6 +30,22 @@ output "app_secret_name" {
   value = var.app_secret_name
 }
 
+output "key_vault_name" {
+  value = azurerm_key_vault.workload.name
+}
+
+output "key_vault_uri" {
+  value = azurerm_key_vault.workload.vault_uri
+}
+
+output "key_vault_database_url_secret_name" {
+  value = var.key_vault_database_url_secret_name
+}
+
+output "key_vault_dev_auth_secret_name" {
+  value = var.key_vault_dev_auth_secret_name
+}
+
 output "storage_account_url" {
   value = azurerm_storage_account.documents.primary_blob_endpoint
 }
@@ -82,6 +98,21 @@ output "argocd_server_service_type" {
   value = var.argocd_server_service_type
 }
 
+output "argocd_server_public_ip" {
+  value = try(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].ip, null)
+}
+
+output "argocd_server_public_hostname" {
+  value = try(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].hostname, null)
+}
+
+output "argocd_server_url" {
+  value = trimspace(try(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].hostname, "")) != "" ? "https://${trimspace(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].hostname)}" : try(
+    trimspace(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].ip) != "" ? "https://${trimspace(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].ip)}" : null,
+    null,
+  )
+}
+
 output "gitops_values_contract" {
   value = {
     frontend_image_repository      = "${data.azurerm_container_registry.global_shared.login_server}/spend-control-frontend"
@@ -101,6 +132,10 @@ output "gitops_values_contract" {
     azure_storage_container_name   = azurerm_storage_container.documents.name
     azure_foundry_endpoint         = azurerm_cognitive_account.foundry.endpoint
     azure_foundry_model_deployment = azurerm_cognitive_deployment.foundry_model.name
+    key_vault_name                 = azurerm_key_vault.workload.name
+    key_vault_uri                  = azurerm_key_vault.workload.vault_uri
+    key_vault_database_url_secret  = var.key_vault_database_url_secret_name
+    key_vault_dev_auth_secret      = var.key_vault_dev_auth_secret_name
     postgres_database_url_template = "postgresql+psycopg://${var.postgres_admin_login}:<postgres_admin_password>@${module.postgres.fqdn}:5432/${module.postgres.database_name}?sslmode=require"
   }
 }

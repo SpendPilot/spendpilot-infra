@@ -124,6 +124,54 @@ variable "app_secret_name" {
   default     = "spend-control-secrets"
 }
 
+variable "key_vault_name" {
+  description = "Optional override for the prod Key Vault name."
+  type        = string
+  default     = ""
+}
+
+variable "key_vault_sku_name" {
+  description = "Key Vault SKU used for prod secrets."
+  type        = string
+  default     = "standard"
+}
+
+variable "key_vault_public_network_access_enabled" {
+  description = "Whether the prod Key Vault is reachable over public network access."
+  type        = bool
+  default     = true
+}
+
+variable "key_vault_secrets_provider_enabled" {
+  description = "Enable the AKS Key Vault Secrets Provider addon."
+  type        = bool
+  default     = true
+}
+
+variable "key_vault_secret_rotation_enabled" {
+  description = "Enable automatic Key Vault secret rotation in the AKS addon."
+  type        = bool
+  default     = true
+}
+
+variable "key_vault_secret_rotation_interval" {
+  description = "Rotation poll interval used by the AKS Key Vault Secrets Provider addon."
+  type        = string
+  default     = "2m"
+}
+
+variable "key_vault_database_url_secret_name" {
+  description = "Key Vault secret name that stores DATABASE_URL."
+  type        = string
+  default     = "spend-control-database-url"
+}
+
+variable "key_vault_dev_auth_secret_name" {
+  description = "Key Vault secret name that stores DEV_AUTH_SECRET."
+  type        = string
+  default     = "spend-control-dev-auth-secret"
+}
+
 variable "vnet_cidr" {
   description = "Virtual network CIDR."
   type        = string
