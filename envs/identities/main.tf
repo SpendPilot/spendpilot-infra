@@ -1,8 +1,21 @@
 data "azuread_client_config" "current" {}
 
+data "terraform_remote_state" "global_shared" {
+  backend = "azurerm"
+
+  config = {
+    resource_group_name  = var.backend_resource_group_name
+    storage_account_name = var.backend_storage_account_name
+    container_name       = var.backend_container_name
+    key                  = var.global_shared_state_key
+    subscription_id      = var.subscription_id
+    tenant_id            = var.tenant_id
+  }
+}
+
 data "azurerm_container_registry" "global_shared" {
-  name                = var.acr_name
-  resource_group_name = var.acr_resource_group_name
+  name                = data.terraform_remote_state.global_shared.outputs.acr_name
+  resource_group_name = data.terraform_remote_state.global_shared.outputs.resource_group_name
 }
 
 locals {

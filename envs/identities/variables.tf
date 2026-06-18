@@ -37,26 +37,28 @@ variable "github_actions_application_name" {
   default     = ""
 }
 
-variable "acr_name" {
-  description = "Name of the existing global shared Azure Container Registry."
+variable "backend_resource_group_name" {
+  description = "Azure Blob backend resource group used to read the global-shared remote state."
   type        = string
-  nullable    = false
-
-  validation {
-    condition     = can(regex("^[a-zA-Z0-9]{5,50}$", var.acr_name))
-    error_message = "ACR names must contain only letters and numbers and be between 5 and 50 characters."
-  }
+  default     = "terraform-rg"
 }
 
-variable "acr_resource_group_name" {
-  description = "Resource group containing the existing global shared ACR."
+variable "backend_storage_account_name" {
+  description = "Azure Blob backend storage account used to read the global-shared remote state."
   type        = string
-  nullable    = false
+  default     = "lijaztf"
+}
 
-  validation {
-    condition     = length(trimspace(var.acr_resource_group_name)) > 0
-    error_message = "acr_resource_group_name must not be empty."
-  }
+variable "backend_container_name" {
+  description = "Azure Blob backend container used to read the global-shared remote state."
+  type        = string
+  default     = "states"
+}
+
+variable "global_shared_state_key" {
+  description = "State key for the global-shared Terraform root that owns the shared ACR."
+  type        = string
+  default     = "global-shared.tfstate"
 }
 
 variable "acr_abac_enabled" {
@@ -69,10 +71,10 @@ variable "acr_abac_enabled" {
     false:
       Assigns the legacy 'AcrPush' role.
 
-    Check with:
+    Check with the ACR created by global-shared:
       az acr show \
-        --name <acr-name> \
-        --resource-group <resource-group> \
+        --name <global-shared-acr-name> \
+        --resource-group <global-shared-rg> \
         --query roleAssignmentMode \
         --output tsv
   DESCRIPTION

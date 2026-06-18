@@ -298,16 +298,28 @@ variable "postgres_database_name" {
   default     = "spendpilot"
 }
 
-variable "acr_name" {
-  description = "Shared ACR name used by platform workloads."
+variable "backend_resource_group_name" {
+  description = "Azure Blob backend resource group used to read the global-shared remote state."
   type        = string
-  default     = "spendpilotacr"
+  default     = "terraform-rg"
 }
 
-variable "acr_resource_group_name" {
-  description = "Resource group name that contains the shared ACR."
+variable "backend_storage_account_name" {
+  description = "Azure Blob backend storage account used to read the global-shared remote state."
   type        = string
-  default     = "rg-spendpilot-global"
+  default     = "lijaztf"
+}
+
+variable "backend_container_name" {
+  description = "Azure Blob backend container used to read the global-shared remote state."
+  type        = string
+  default     = "states"
+}
+
+variable "global_shared_state_key" {
+  description = "State key for the global-shared Terraform root that owns the shared ACR."
+  type        = string
+  default     = "global-shared.tfstate"
 }
 
 variable "document_intelligence_sku" {

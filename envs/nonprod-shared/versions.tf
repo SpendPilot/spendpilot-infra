@@ -2,12 +2,12 @@ terraform {
   required_version = ">= 1.8.0"
 
   backend "azurerm" {
-    resource_group_name  = "terra-rg"
-    storage_account_name = "lijazterracount"
-    container_name       = "terracontainer"
+    resource_group_name  = "terraform-rg"
+    storage_account_name = "lijaztf"
+    container_name       = "states"
     key                  = "nonprod-shared.tfstate"
-    subscription_id      = "e1f5b4be-e0ba-4ccb-8708-a949458fcd83"
-    tenant_id            = "920e9322-340c-4fbc-bf09-dc8fd6636182"
+    subscription_id      = "c00887fb-883e-4d8b-83ba-697054b43421"
+    tenant_id            = "23009888-f985-4438-a6a8-32650f036be3"
   }
 
   required_providers {

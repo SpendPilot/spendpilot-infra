@@ -5,8 +5,10 @@ resource_group_name          = "rg-spendpilot-prod"
 aks_node_resource_group_name = "rg-spendpilot-prod-aks-nodes"
 
 # Azure foundation
-acr_name                = "spendpilotacr"
-acr_resource_group_name = "rg-spendpilot-global"
+# Shared ACR now comes from the global-shared Terraform state.
+#
+# Change the ACR name in envs/global-shared/terraform.tfvars, apply global-shared,
+# then apply prod. prod will resolve the registry from remote state automatically.
 
 # Networking
 vnet_cidr       = "10.40.0.0/16"

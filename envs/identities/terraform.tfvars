@@ -1,5 +1,5 @@
-subscription_id = "e1f5b4be-e0ba-4ccb-8708-a949458fcd83"
-tenant_id       = "920e9322-340c-4fbc-bf09-dc8fd6636182"
+subscription_id = "c00887fb-883e-4d8b-83ba-697054b43421"
+tenant_id       = "23009888-f985-4438-a6a8-32650f036be3"
 
 project_name = "spendpilot"
 
@@ -7,14 +7,16 @@ project_name = "spendpilot"
 # Leave empty to use "<project_name>-github-actions".
 github_actions_application_name = ""
 
-acr_name                = "spendpilotacr"
-acr_resource_group_name = "rg-spendpilot-global"
-
-# Run:
+# Reads the shared ACR from the global-shared remote state.
+#
+# Change the ACR name in global-shared only, then apply global-shared before identities.
+# identities will resolve the registry from that state automatically.
+#
+# Run after global-shared apply:
 #
 # az acr show \
-#   --name spendpilotacr \
-#   --resource-group rg-spendpilot-global \
+#   --name <global-shared-acr-name> \
+#   --resource-group <global-shared-rg> \
 #   --query roleAssignmentMode \
 #   --output tsv
 #

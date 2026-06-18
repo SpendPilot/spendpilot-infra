@@ -5,8 +5,8 @@ data "azuread_service_principal" "microsoft_graph" {
 }
 
 data "azurerm_storage_account" "terraform_state" {
-  name                = "lijazterracount"
-  resource_group_name = "terra-rg"
+  name                = "lijaztf"
+  resource_group_name = "terraform-rg"
 }
 
 resource "azuread_application" "github_actions" {

@@ -31,19 +31,19 @@ variable "tags" {
 variable "backend_resource_group_name" {
   description = "Azure Blob backend resource group used by remote state reads."
   type        = string
-  default     = "terra-rg"
+  default     = "terraform-rg"
 }
 
 variable "backend_storage_account_name" {
   description = "Azure Blob backend storage account used by remote state reads."
   type        = string
-  default     = "lijazterracount"
+  default     = "lijaztf"
 }
 
 variable "backend_container_name" {
   description = "Azure Blob backend container used by remote state reads."
   type        = string
-  default     = "terracontainer"
+  default     = "states"
 }
 
 variable "read_dev_state" {
