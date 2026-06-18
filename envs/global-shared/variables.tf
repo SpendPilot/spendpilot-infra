@@ -22,6 +22,12 @@ variable "resource_group_name" {
   default     = "rg-spendpilot-global"
 }
 
+variable "root_domain_name" {
+  description = "Root public DNS domain hosted in Azure DNS."
+  type        = string
+  default     = "myfinagent.online"
+}
+
 variable "acr_name" {
   description = "Optional explicit ACR name override."
   type        = string

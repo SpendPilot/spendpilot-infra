@@ -50,6 +50,9 @@ module "network" {
     "aks-subnet" = {
       address_prefixes = [var.aks_subnet_cidr]
     }
+    "appgw-subnet" = {
+      address_prefixes = [var.app_gateway_subnet_cidr]
+    }
     "db-subnet" = {
       address_prefixes   = [var.db_subnet_cidr]
       service_endpoints  = ["Microsoft.Storage"]
@@ -111,6 +114,28 @@ module "aks_cluster" {
   depends_on = [azurerm_log_analytics_solution.container_insights]
 }
 
+module "app_gateway_edge" {
+  count  = var.app_gateway_enabled ? 1 : 0
+  source = "../../modules/app-gateway-aks-edge"
+
+  name                 = "${local.name}-appgw"
+  resource_group_name  = module.resource_group.name
+  location             = module.resource_group.location
+  subnet_id            = module.network.subnet_ids["appgw-subnet"]
+  min_capacity         = var.app_gateway_min_capacity
+  max_capacity         = var.app_gateway_max_capacity
+  backend_ip_addresses = var.app_gateway_backend_ip_addresses
+  backend_port         = var.app_gateway_backend_port
+  probe_path           = "/health"
+  listener_host_name   = var.app_gateway_listener_host_name
+  identity_ids = var.app_gateway_tls_enabled ? [
+    azurerm_user_assigned_identity.app_gateway[0].id,
+  ] : []
+  tls_certificate_secret_id = var.app_gateway_tls_enabled ? azurerm_key_vault_certificate.app_gateway_tls[0].versionless_secret_id : ""
+  tls_host_name             = var.app_gateway_tls_enabled ? var.app_gateway_tls_host_name : ""
+  tags                      = local.tags
+}
+
 resource "azurerm_role_assignment" "acr_pull" {
   scope                = data.azurerm_container_registry.global_shared.id
   role_definition_name = "AcrPull"
@@ -119,6 +144,15 @@ resource "azurerm_role_assignment" "acr_pull" {
 
 resource "azurerm_user_assigned_identity" "workload" {
   name                = "${local.name}-uami"
+  location            = module.resource_group.location
+  resource_group_name = module.resource_group.name
+  tags                = local.tags
+}
+
+resource "azurerm_user_assigned_identity" "app_gateway" {
+  count = var.app_gateway_enabled && var.app_gateway_tls_enabled ? 1 : 0
+
+  name                = "${local.name}-appgw-uami"
   location            = module.resource_group.location
   resource_group_name = module.resource_group.name
   tags                = local.tags
@@ -135,6 +169,60 @@ resource "azurerm_key_vault" "workload" {
   purge_protection_enabled      = true
   soft_delete_retention_days    = 90
   tags                          = local.tags
+}
+
+resource "azurerm_key_vault_certificate" "app_gateway_tls" {
+  count = var.app_gateway_enabled && var.app_gateway_tls_enabled ? 1 : 0
+
+  name         = replace(var.app_gateway_tls_host_name, ".", "-")
+  key_vault_id = azurerm_key_vault.workload.id
+
+  certificate_policy {
+    issuer_parameters {
+      name = "Self"
+    }
+
+    key_properties {
+      exportable = true
+      key_size   = 2048
+      key_type   = "RSA"
+      reuse_key  = false
+    }
+
+    lifetime_action {
+      action {
+        action_type = "AutoRenew"
+      }
+
+      trigger {
+        days_before_expiry = 30
+      }
+    }
+
+    secret_properties {
+      content_type = "application/x-pkcs12"
+    }
+
+    x509_certificate_properties {
+      extended_key_usage = [
+        "1.3.6.1.5.5.7.3.1",
+      ]
+      key_usage = [
+        "cRLSign",
+        "dataEncipherment",
+        "digitalSignature",
+        "keyAgreement",
+        "keyCertSign",
+        "keyEncipherment",
+      ]
+      subject            = "CN=${var.app_gateway_tls_host_name}"
+      validity_in_months = 12
+
+      subject_alternative_names {
+        dns_names = [var.app_gateway_tls_host_name]
+      }
+    }
+  }
 }
 
 resource "azurerm_federated_identity_credential" "workload" {
@@ -268,9 +356,23 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
   principal_id         = azurerm_user_assigned_identity.workload.principal_id
 }
 
+resource "azurerm_role_assignment" "key_vault_secrets_user_app_gateway" {
+  count = var.app_gateway_enabled && var.app_gateway_tls_enabled ? 1 : 0
+
+  scope                = azurerm_key_vault.workload.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.app_gateway[0].principal_id
+}
+
 resource "azurerm_role_assignment" "key_vault_secrets_officer_current_user" {
   scope                = azurerm_key_vault.workload.id
   role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "azurerm_role_assignment" "key_vault_certificates_officer_current_user" {
+  scope                = azurerm_key_vault.workload.id
+  role_definition_name = "Key Vault Certificates Officer"
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
@@ -288,7 +390,7 @@ resource "kubernetes_config_map_v1" "spendpilot" {
     AZURE_CLIENT_ID                      = azurerm_user_assigned_identity.workload.client_id
     ENTRA_FRONTEND_CLIENT_ID             = azuread_application.frontend_spa.client_id
     ENTRA_BACKEND_CLIENT_ID              = azuread_application.backend_api.client_id
-    ENTRA_BACKEND_AUDIENCE               = "api://${azuread_application.backend_api.client_id}"
+    ENTRA_BACKEND_AUDIENCE               = var.backend_application_id_uri
     ENTRA_AUTHORITY                      = var.auth_authority
     ENTRA_ALLOWED_TENANT_IDS             = var.allowed_tenant_ids
     PLATFORM_ADMIN_EMAILS                = var.platform_admin_emails
@@ -303,8 +405,8 @@ resource "kubernetes_config_map_v1" "spendpilot" {
     NEXT_PUBLIC_AUTH_MODE                = "entra"
     NEXT_PUBLIC_ENTRA_FRONTEND_CLIENT_ID = azuread_application.frontend_spa.client_id
     NEXT_PUBLIC_ENTRA_BACKEND_CLIENT_ID  = azuread_application.backend_api.client_id
-    NEXT_PUBLIC_ENTRA_BACKEND_AUDIENCE   = "api://${azuread_application.backend_api.client_id}"
-    NEXT_PUBLIC_ENTRA_API_SCOPE          = "api://${azuread_application.backend_api.client_id}/access_as_user"
+    NEXT_PUBLIC_ENTRA_BACKEND_AUDIENCE   = var.backend_application_id_uri
+    NEXT_PUBLIC_ENTRA_API_SCOPE          = "${var.backend_application_id_uri}/access_as_user"
     NEXT_PUBLIC_ENTRA_AUTHORITY          = var.auth_authority
   }
 
@@ -319,6 +421,7 @@ resource "kubernetes_config_map_v1" "spendpilot" {
 resource "azuread_application" "backend_api" {
   display_name     = "${local.name}-backend-api"
   sign_in_audience = "AzureADandPersonalMicrosoftAccount"
+  identifier_uris  = [var.backend_application_id_uri]
   owners           = [data.azuread_client_config.current.object_id]
 
   api {
@@ -538,4 +641,198 @@ data "kubernetes_service_v1" "argocd_server" {
   }
 
   depends_on = [time_sleep.wait_for_argocd_service]
+}
+
+data "kubernetes_service_v1" "gateway" {
+  count = local.frontdoor_enabled && trimspace(var.frontdoor_origin_hostname_override) == "" ? 1 : 0
+
+  metadata {
+    name      = "spend-control-gateway"
+    namespace = var.namespace
+  }
+
+  depends_on = [terraform_data.aks_get_credentials]
+}
+
+resource "azurerm_cdn_frontdoor_profile" "this" {
+  count = local.frontdoor_enabled ? 1 : 0
+
+  name                = "${local.name}-fd"
+  resource_group_name = module.resource_group.name
+  sku_name            = var.frontdoor_sku_name
+  tags                = local.tags
+}
+
+resource "azurerm_cdn_frontdoor_endpoint" "this" {
+  count = local.frontdoor_enabled ? 1 : 0
+
+  name                     = "${local.name}-ep"
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this[0].id
+  enabled                  = true
+  tags                     = local.tags
+}
+
+resource "azurerm_cdn_frontdoor_custom_domain" "apex" {
+  count = local.frontdoor_enabled && local.frontdoor_apex_host_name != "" ? 1 : 0
+
+  name                     = replace(local.frontdoor_apex_host_name, ".", "-")
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this[0].id
+  host_name                = local.frontdoor_apex_host_name
+
+  tls {
+    certificate_type = "ManagedCertificate"
+  }
+}
+
+resource "azurerm_cdn_frontdoor_custom_domain" "www" {
+  count = local.frontdoor_enabled && local.frontdoor_www_host_name != "" ? 1 : 0
+
+  name                     = replace(local.frontdoor_www_host_name, ".", "-")
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this[0].id
+  host_name                = local.frontdoor_www_host_name
+
+  tls {
+    certificate_type = "ManagedCertificate"
+  }
+}
+
+resource "azurerm_cdn_frontdoor_origin_group" "this" {
+  count = local.frontdoor_enabled ? 1 : 0
+
+  name                     = "${local.name}-og"
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this[0].id
+  session_affinity_enabled = false
+
+  health_probe {
+    interval_in_seconds = 30
+    path                = "/health"
+    protocol            = var.frontdoor_origin_use_https ? "Https" : "Http"
+    request_type        = "GET"
+  }
+
+  load_balancing {
+    additional_latency_in_milliseconds = 0
+    sample_size                        = 4
+    successful_samples_required        = 3
+  }
+}
+
+resource "azurerm_cdn_frontdoor_origin" "kgateway" {
+  count = local.frontdoor_enabled ? 1 : 0
+
+  name                          = "${local.name}-kgw"
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this[0].id
+  enabled                       = true
+  host_name = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(
+    data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname,
+    data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip,
+  )
+  http_port  = 80
+  https_port = 443
+  origin_host_header = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(
+    data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname,
+    data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip,
+  )
+  priority                       = 1
+  weight                         = 1000
+  certificate_name_check_enabled = false
+}
+
+resource "azurerm_cdn_frontdoor_firewall_policy" "this" {
+  name                = "${replace(local.name, "-", "")}waf"
+  resource_group_name = module.resource_group.name
+  sku_name            = var.frontdoor_sku_name
+  enabled             = true
+  mode                = "Prevention"
+
+  managed_rule {
+    type    = "DefaultRuleSet"
+    version = "1.0"
+    action  = "Block"
+  }
+
+  managed_rule {
+    type    = "Microsoft_BotManagerRuleSet"
+    version = "1.0"
+    action  = "Block"
+  }
+
+  custom_rule {
+    name                           = "AuthRateLimit"
+    enabled                        = true
+    priority                       = 1
+    type                           = "RateLimitRule"
+    action                         = "Block"
+    rate_limit_duration_in_minutes = var.frontdoor_auth_rate_limit_duration_minutes
+    rate_limit_threshold           = var.frontdoor_auth_rate_limit_threshold
+
+    match_condition {
+      match_variable = "RequestUri"
+      operator       = "BeginsWith"
+      match_values   = ["/api/auth"]
+    }
+  }
+
+  tags = local.tags
+}
+
+resource "azurerm_cdn_frontdoor_route" "this" {
+  count = local.frontdoor_enabled ? 1 : 0
+
+  name                            = "${local.name}-route"
+  cdn_frontdoor_endpoint_id       = azurerm_cdn_frontdoor_endpoint.this[0].id
+  cdn_frontdoor_origin_group_id   = azurerm_cdn_frontdoor_origin_group.this[0].id
+  cdn_frontdoor_origin_ids        = [azurerm_cdn_frontdoor_origin.kgateway[0].id]
+  cdn_frontdoor_custom_domain_ids = azurerm_cdn_frontdoor_custom_domain.apex[*].id
+  enabled                         = true
+  forwarding_protocol             = var.frontdoor_origin_use_https ? "HttpsOnly" : "HttpOnly"
+  https_redirect_enabled          = true
+  patterns_to_match               = ["/*"]
+  supported_protocols             = ["Http", "Https"]
+  link_to_default_domain          = true
+}
+
+resource "azurerm_cdn_frontdoor_route" "www" {
+  count = local.frontdoor_enabled && length(azurerm_cdn_frontdoor_custom_domain.www) > 0 ? 1 : 0
+
+  name                            = "${local.name}-www-route"
+  cdn_frontdoor_endpoint_id       = azurerm_cdn_frontdoor_endpoint.this[0].id
+  cdn_frontdoor_origin_group_id   = azurerm_cdn_frontdoor_origin_group.this[0].id
+  cdn_frontdoor_origin_ids        = [azurerm_cdn_frontdoor_origin.kgateway[0].id]
+  cdn_frontdoor_custom_domain_ids = azurerm_cdn_frontdoor_custom_domain.www[*].id
+  enabled                         = true
+  forwarding_protocol             = var.frontdoor_origin_use_https ? "HttpsOnly" : "HttpOnly"
+  https_redirect_enabled          = true
+  patterns_to_match               = ["/*"]
+  supported_protocols             = ["Http", "Https"]
+  link_to_default_domain          = false
+}
+
+resource "azurerm_cdn_frontdoor_security_policy" "this" {
+  count = local.frontdoor_enabled ? 1 : 0
+
+  name                     = "${local.name}-security"
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this[0].id
+
+  security_policies {
+    firewall {
+      cdn_frontdoor_firewall_policy_id = azurerm_cdn_frontdoor_firewall_policy.this.id
+
+      association {
+        domain {
+          cdn_frontdoor_domain_id = azurerm_cdn_frontdoor_endpoint.this[0].id
+        }
+
+        dynamic "domain" {
+          for_each = toset(concat(azurerm_cdn_frontdoor_custom_domain.apex[*].id, azurerm_cdn_frontdoor_custom_domain.www[*].id))
+
+          content {
+            cdn_frontdoor_domain_id = domain.value
+          }
+        }
+
+        patterns_to_match = ["/*"]
+      }
+    }
+  }
 }

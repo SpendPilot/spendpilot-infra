@@ -79,11 +79,19 @@ output "postgres_database_url_template" {
 }
 
 output "backend_api_audience" {
-  value = "api://${azuread_application.backend_api.client_id}"
+  value = var.backend_application_id_uri
 }
 
 output "backend_api_scope" {
-  value = "api://${azuread_application.backend_api.client_id}/access_as_user"
+  value = "${var.backend_application_id_uri}/access_as_user"
+}
+
+output "auth_authority" {
+  value = var.auth_authority
+}
+
+output "supported_sign_in_audience" {
+  value = "AzureADandPersonalMicrosoftAccount"
 }
 
 output "frontend_client_id" {
@@ -92,6 +100,64 @@ output "frontend_client_id" {
 
 output "backend_client_id" {
   value = azuread_application.backend_api.client_id
+}
+
+output "tenant_admin_consent_contract" {
+  value = {
+    supported_sign_in_audience = "AzureADandPersonalMicrosoftAccount"
+    authority                  = var.auth_authority
+    frontend_client_id         = azuread_application.frontend_spa.client_id
+    backend_application_id_uri = var.backend_application_id_uri
+    delegated_scope            = "${var.backend_application_id_uri}/access_as_user"
+    admin_consent_scope        = "${var.backend_application_id_uri}/.default"
+    redirect_uri_hint          = "Use any registered HTTPS login redirect URI for the SPA, such as https://fin.nexaflow.site/login"
+    admin_consent_url_template = "https://login.microsoftonline.com/<tenant-id-or-domain>/v2.0/adminconsent?client_id=${azuread_application.frontend_spa.client_id}&scope=${urlencode("${var.backend_application_id_uri}/.default")}&redirect_uri=${urlencode("https://fin.nexaflow.site/login")}"
+    governance_model = {
+      first_user_in_tenant_becomes = "org_owner"
+      subsequent_users_become      = "employee"
+      personal_accounts            = "personal Microsoft accounts get isolated workspaces unless they are invited into an org tenant as guest users"
+    }
+  }
+}
+
+output "frontdoor_endpoint_hostname" {
+  value = local.frontdoor_enabled && length(azurerm_cdn_frontdoor_endpoint.this) > 0 ? azurerm_cdn_frontdoor_endpoint.this[0].host_name : null
+}
+
+output "frontdoor_default_url" {
+  value = local.frontdoor_enabled && length(azurerm_cdn_frontdoor_endpoint.this) > 0 ? "https://${azurerm_cdn_frontdoor_endpoint.this[0].host_name}" : null
+}
+
+output "frontend_login_urls" {
+  value = distinct(concat(
+    local.frontdoor_enabled && length(azurerm_cdn_frontdoor_endpoint.this) > 0 ? ["https://${azurerm_cdn_frontdoor_endpoint.this[0].host_name}/login"] : [],
+    local.frontdoor_apex_host_name != "" ? ["https://${local.frontdoor_apex_host_name}/login"] : [],
+    local.frontdoor_www_host_name != "" ? ["https://${local.frontdoor_www_host_name}/login"] : [],
+  ))
+}
+
+output "frontdoor_apex_validation" {
+  value = length(azurerm_cdn_frontdoor_custom_domain.apex) > 0 ? {
+    host_name        = azurerm_cdn_frontdoor_custom_domain.apex[0].host_name
+    resource_id      = azurerm_cdn_frontdoor_custom_domain.apex[0].id
+    validation_token = azurerm_cdn_frontdoor_custom_domain.apex[0].validation_token
+  } : null
+}
+
+output "frontdoor_www_validation" {
+  value = length(azurerm_cdn_frontdoor_custom_domain.www) > 0 ? {
+    host_name        = azurerm_cdn_frontdoor_custom_domain.www[0].host_name
+    resource_id      = azurerm_cdn_frontdoor_custom_domain.www[0].id
+    validation_token = azurerm_cdn_frontdoor_custom_domain.www[0].validation_token
+  } : null
+}
+
+output "app_gateway_name" {
+  value = var.app_gateway_enabled && length(module.app_gateway_edge) > 0 ? module.app_gateway_edge[0].name : null
+}
+
+output "app_gateway_public_ip" {
+  value = var.app_gateway_enabled && length(module.app_gateway_edge) > 0 ? module.app_gateway_edge[0].public_ip_address : null
 }
 
 output "argocd_server_service_type" {
@@ -124,8 +190,8 @@ output "gitops_values_contract" {
     service_account_name           = var.service_account_name
     auth_frontend_client_id        = azuread_application.frontend_spa.client_id
     auth_backend_client_id         = azuread_application.backend_api.client_id
-    auth_backend_audience          = "api://${azuread_application.backend_api.client_id}"
-    auth_api_scope                 = "api://${azuread_application.backend_api.client_id}/access_as_user"
+    auth_backend_audience          = var.backend_application_id_uri
+    auth_api_scope                 = "${var.backend_application_id_uri}/access_as_user"
     azure_managed_identity_client  = azurerm_user_assigned_identity.workload.client_id
     azure_document_intelligence    = azurerm_cognitive_account.document_intelligence.endpoint
     azure_storage_account_url      = azurerm_storage_account.documents.primary_blob_endpoint
@@ -136,6 +202,9 @@ output "gitops_values_contract" {
     key_vault_uri                  = azurerm_key_vault.workload.vault_uri
     key_vault_database_url_secret  = var.key_vault_database_url_secret_name
     key_vault_dev_auth_secret      = var.key_vault_dev_auth_secret_name
+    frontend_default_host          = local.frontdoor_enabled && length(azurerm_cdn_frontdoor_endpoint.this) > 0 ? azurerm_cdn_frontdoor_endpoint.this[0].host_name : null
+    frontend_apex_host             = local.frontdoor_apex_host_name
+    frontend_www_host              = local.frontdoor_www_host_name
     postgres_database_url_template = "postgresql+psycopg://${var.postgres_admin_login}:<postgres_admin_password>@${module.postgres.fqdn}:5432/${module.postgres.database_name}?sslmode=require"
   }
 }

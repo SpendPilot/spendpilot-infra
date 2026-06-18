@@ -28,3 +28,17 @@ module "container_registry" {
   anonymous_pull_enabled = var.acr_anonymous_pull_enabled
   tags                   = local.tags
 }
+
+# Hostinger remains the registrar for the root domain.
+# Azure DNS becomes authoritative only after the Hostinger nameservers
+# are delegated to the Azure DNS nameservers created for this zone.
+# This shared DNS zone must outlive environment-specific infrastructure.
+resource "azurerm_dns_zone" "public" {
+  name                = var.root_domain_name
+  resource_group_name = module.resource_group.name
+  tags                = local.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

@@ -370,6 +370,12 @@ variable "auth_authority" {
   default     = "https://login.microsoftonline.com/common"
 }
 
+variable "backend_application_id_uri" {
+  description = "Application ID URI exposed by the backend API app registration."
+  type        = string
+  default     = "api://spendpilot-prod-backend-api"
+}
+
 variable "backend_cors_origins" {
   description = "Comma-separated CORS origins allowed to call the backend APIs."
   type        = string
@@ -399,4 +405,106 @@ variable "frontend_redirect_uris" {
   description = "Frontend SPA redirect URIs."
   type        = list(string)
   default     = ["http://localhost:3000/login"]
+}
+
+variable "frontdoor_sku_name" {
+  description = "Front Door SKU."
+  type        = string
+  default     = "Premium_AzureFrontDoor"
+}
+
+variable "frontdoor_enabled" {
+  description = "Whether to provision Azure Front Door resources in prod."
+  type        = bool
+  default     = false
+}
+
+variable "frontdoor_origin_use_https" {
+  description = "Whether Front Door should forward traffic to the application gateway over HTTPS."
+  type        = bool
+  default     = false
+}
+
+variable "frontdoor_auth_rate_limit_threshold" {
+  description = "Per-minute threshold for authentication endpoint rate limiting at Front Door."
+  type        = number
+  default     = 60
+}
+
+variable "frontdoor_auth_rate_limit_duration_minutes" {
+  description = "Duration window in minutes for the authentication endpoint rate limit."
+  type        = number
+  default     = 1
+}
+
+variable "frontdoor_origin_hostname_override" {
+  description = "Optional explicit origin host name or IP for Front Door. If empty, Terraform reads the current gateway service address from Kubernetes."
+  type        = string
+  default     = ""
+}
+
+variable "frontdoor_apex_host_name" {
+  description = "Optional apex domain to onboard on Front Door."
+  type        = string
+  default     = ""
+}
+
+variable "frontdoor_www_host_name" {
+  description = "Optional www domain to onboard on Front Door."
+  type        = string
+  default     = ""
+}
+
+variable "app_gateway_enabled" {
+  description = "Whether to provision the prod edge Application Gateway."
+  type        = bool
+  default     = true
+}
+
+variable "app_gateway_subnet_cidr" {
+  description = "Dedicated subnet CIDR for the prod Application Gateway."
+  type        = string
+  default     = "10.40.30.0/24"
+}
+
+variable "app_gateway_min_capacity" {
+  description = "Minimum autoscale capacity for the prod Application Gateway."
+  type        = number
+  default     = 1
+}
+
+variable "app_gateway_max_capacity" {
+  description = "Maximum autoscale capacity for the prod Application Gateway."
+  type        = number
+  default     = 2
+}
+
+variable "app_gateway_backend_ip_addresses" {
+  description = "Backend IP addresses for the prod edge Application Gateway."
+  type        = list(string)
+  default     = []
+}
+
+variable "app_gateway_backend_port" {
+  description = "Backend port for the prod edge Application Gateway."
+  type        = number
+  default     = 80
+}
+
+variable "app_gateway_listener_host_name" {
+  description = "Optional host header bound to the prod edge Application Gateway listener."
+  type        = string
+  default     = ""
+}
+
+variable "app_gateway_tls_enabled" {
+  description = "Whether to provision host-specific HTTPS termination on the prod Application Gateway."
+  type        = bool
+  default     = false
+}
+
+variable "app_gateway_tls_host_name" {
+  description = "DNS host name to terminate on the prod Application Gateway."
+  type        = string
+  default     = ""
 }

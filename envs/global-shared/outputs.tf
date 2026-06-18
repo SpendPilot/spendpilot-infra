@@ -9,3 +9,19 @@ output "acr_id" {
 output "acr_login_server" {
   value = var.create_acr ? module.container_registry[0].login_server : null
 }
+
+output "dns_zone_name" {
+  value = azurerm_dns_zone.public.name
+}
+
+output "dns_zone_id" {
+  value = azurerm_dns_zone.public.id
+}
+
+output "dns_zone_resource_group_name" {
+  value = module.resource_group.name
+}
+
+output "dns_zone_name_servers" {
+  value = azurerm_dns_zone.public.name_servers
+}

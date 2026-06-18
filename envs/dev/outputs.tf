@@ -84,19 +84,19 @@ output "gateway_public_hostname" {
 
 output "frontdoor_origin_contract" {
   value = {
-    environment           = var.environment
-    namespace             = var.namespace
-    origin_hostname       = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null)
-    origin_host_header    = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null)
-    gateway_public_ip     = try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, null)
-    gateway_public_fqdn   = try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null)
-    health_probe_path     = "/health"
-    http_port             = 80
-    https_port            = 443
-    origin_protocol       = var.frontdoor_origin_use_https ? "Https" : "Http"
-    forwarding_protocol   = var.frontdoor_origin_use_https ? "HttpsOnly" : "HttpOnly"
-    frontend_hostnames    = []
-    api_path_prefixes     = ["/api/auth", "/api/admin", "/api/finance", "/api/documents", "/api/ai", "/health", "/ready"]
-    frontend_path_prefix  = "/*"
+    environment          = var.environment
+    namespace            = var.namespace
+    origin_hostname      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null)
+    origin_host_header   = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null)
+    gateway_public_ip    = try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, null)
+    gateway_public_fqdn  = try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null)
+    health_probe_path    = "/health"
+    http_port            = 80
+    https_port           = 443
+    origin_protocol      = var.frontdoor_origin_use_https ? "Https" : "Http"
+    forwarding_protocol  = var.frontdoor_origin_use_https ? "HttpsOnly" : "HttpOnly"
+    frontend_hostnames   = []
+    api_path_prefixes    = ["/api/auth", "/api/admin", "/api/finance", "/api/documents", "/api/ai", "/health", "/ready"]
+    frontend_path_prefix = "/*"
   }
 }
