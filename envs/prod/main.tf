@@ -78,7 +78,7 @@ module "network" {
 module "postgres" {
   source = "../../modules/postgres-flex"
 
-  name                         = "${local.name}-pgsql"
+  name                         = var.postgres_server_name
   resource_group_name          = module.resource_group.name
   location                     = module.resource_group.location
   server_version               = var.postgres_version
@@ -236,6 +236,8 @@ resource "azurerm_key_vault_certificate" "app_gateway_tls" {
       }
     }
   }
+
+  depends_on = [time_sleep.wait_for_key_vault_rbac]
 }
 
 resource "azurerm_federated_identity_credential" "workload" {
@@ -286,7 +288,7 @@ resource "kubernetes_service_account_v1" "workload" {
 }
 
 resource "azurerm_storage_account" "documents" {
-  name                            = substr("${local.compact_name}st", 0, 24)
+  name                            = var.documents_storage_account_name
   resource_group_name             = module.resource_group.name
   location                        = module.resource_group.location
   account_tier                    = "Standard"
@@ -308,23 +310,23 @@ resource "azurerm_storage_container" "documents" {
 }
 
 resource "azurerm_cognitive_account" "document_intelligence" {
-  name                          = "${local.name}-docint"
+  name                          = var.document_intelligence_account_name
   location                      = module.resource_group.location
   resource_group_name           = module.resource_group.name
   kind                          = "FormRecognizer"
   sku_name                      = var.document_intelligence_sku
-  custom_subdomain_name         = substr("${local.compact_name}doc", 0, 63)
+  custom_subdomain_name         = var.document_intelligence_custom_subdomain_name
   public_network_access_enabled = true
   tags                          = local.tags
 }
 
 resource "azurerm_cognitive_account" "foundry" {
-  name                          = "${local.name}-foundry"
+  name                          = var.foundry_account_name
   location                      = var.foundry_location
   resource_group_name           = module.resource_group.name
   kind                          = "AIServices"
   sku_name                      = var.foundry_sku_name
-  custom_subdomain_name         = substr("${local.compact_name}ai", 0, 63)
+  custom_subdomain_name         = var.foundry_custom_subdomain_name
   public_network_access_enabled = true
   tags                          = local.tags
 }
@@ -387,6 +389,17 @@ resource "azurerm_role_assignment" "key_vault_certificates_officer_current_user"
   scope                = azurerm_key_vault.workload.id
   role_definition_name = "Key Vault Certificates Officer"
   principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "time_sleep" "wait_for_key_vault_rbac" {
+  create_duration = "45s"
+
+  depends_on = [
+    azurerm_role_assignment.key_vault_secrets_user,
+    azurerm_role_assignment.key_vault_secrets_user_app_gateway,
+    azurerm_role_assignment.key_vault_secrets_officer_current_user,
+    azurerm_role_assignment.key_vault_certificates_officer_current_user,
+  ]
 }
 
 resource "kubernetes_config_map_v1" "spendpilot" {

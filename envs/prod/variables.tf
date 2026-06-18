@@ -298,6 +298,12 @@ variable "postgres_database_name" {
   default     = "spendpilot"
 }
 
+variable "postgres_server_name" {
+  description = "Optional explicit PostgreSQL Flexible Server name override."
+  type        = string
+  default     = "spendpilot-prod-pgsql"
+}
+
 variable "backend_resource_group_name" {
   description = "Azure Blob backend resource group used to read the global-shared remote state."
   type        = string
@@ -328,10 +334,34 @@ variable "document_intelligence_sku" {
   default     = "S0"
 }
 
+variable "document_intelligence_account_name" {
+  description = "Optional explicit Document Intelligence account name override."
+  type        = string
+  default     = "spendpilot-prod-docint"
+}
+
+variable "document_intelligence_custom_subdomain_name" {
+  description = "Optional explicit Document Intelligence custom subdomain override."
+  type        = string
+  default     = "spendpilotproddoc"
+}
+
 variable "foundry_sku_name" {
   description = "Azure AI Foundry/OpenAI account SKU."
   type        = string
   default     = "S0"
+}
+
+variable "foundry_account_name" {
+  description = "Optional explicit Azure AI Foundry account name override."
+  type        = string
+  default     = "spendpilot-prod-foundry"
+}
+
+variable "foundry_custom_subdomain_name" {
+  description = "Optional explicit Azure AI Foundry custom subdomain override."
+  type        = string
+  default     = "spendpilotprodai"
 }
 
 variable "foundry_location" {
@@ -404,6 +434,12 @@ variable "frontend_api_base_url" {
   description = "Public API base URL exposed to the frontend runtime."
   type        = string
   default     = "/api"
+}
+
+variable "documents_storage_account_name" {
+  description = "Optional explicit Azure Storage Account name override for documents."
+  type        = string
+  default     = "spendpilotprodst"
 }
 
 variable "dev_auth_secret" {

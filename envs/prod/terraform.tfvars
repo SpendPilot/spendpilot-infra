@@ -34,20 +34,25 @@ postgres_admin_password               = "replace-me"
 postgres_version                      = "16"
 postgres_sku_name                     = "GP_Standard_D2s_v3"
 postgres_zone                         = "1"
-postgres_ha_mode                      = "ZoneRedundant"
-postgres_ha_standby_zone              = "2"
+postgres_ha_mode                      = "Disabled"
+postgres_ha_standby_zone              = null
 postgres_geo_redundant_backup_enabled = true
 postgres_storage_mb                   = 32768
 postgres_database_name                = "spendpilot"
+postgres_server_name                  = "spendpilot-prod-pgsql-2300"
 
 # AI services
-document_intelligence_sku  = "S0"
-foundry_sku_name           = "S0"
-foundry_location           = "East US 2"
-openai_model_name          = "gpt-4.1-mini"
-openai_model_version       = "2025-04-14"
-openai_deployment_sku_name = "GlobalStandard"
-openai_deployment_capacity = 1
+document_intelligence_sku                   = "S0"
+document_intelligence_account_name          = "spendpilot-prod-docint-2300"
+document_intelligence_custom_subdomain_name = "spendpilotproddoc2300"
+foundry_sku_name                            = "S0"
+foundry_account_name                        = "spendpilot-prod-foundry-2300"
+foundry_custom_subdomain_name               = "spendpilotprodai2300"
+foundry_location                            = "East US 2"
+openai_model_name                           = "gpt-4.1-mini"
+openai_model_version                        = "2025-04-14"
+openai_deployment_sku_name                  = "GlobalStandard"
+openai_deployment_capacity                  = 1
 
 # App bootstrap contract
 namespace            = "spend-control"
@@ -60,14 +65,16 @@ frontend_redirect_uris = [
   "https://myfinagent.online/login",
   "https://www.myfinagent.online/login",
 ]
-auth_authority             = "https://login.microsoftonline.com/common"
-backend_application_id_uri = "api://spendpilot-prod-backend-api"
-backend_cors_origins       = "https://fin.nexaflow.site,https://myfinagent.online,https://www.myfinagent.online"
-finance_default_currency   = "INR"
-frontend_api_base_url      = "/api"
-dev_auth_secret            = "disabled-in-production"
-allowed_tenant_ids         = ""
-platform_admin_emails      = ""
+auth_authority                 = "https://login.microsoftonline.com/common"
+backend_application_id_uri     = "api://spendpilot-prod-backend-api-2300"
+backend_cors_origins           = "https://fin.nexaflow.site,https://myfinagent.online,https://www.myfinagent.online"
+finance_default_currency       = "INR"
+frontend_api_base_url          = "/api"
+dev_auth_secret                = "disabled-in-production"
+allowed_tenant_ids             = ""
+platform_admin_emails          = ""
+key_vault_name                 = "spendpilot-prod-kv-2300"
+documents_storage_account_name = "sp2300proddocs"
 
 # Front Door
 frontdoor_enabled                  = false
