@@ -40,6 +40,11 @@ postgres_geo_redundant_backup_enabled = true
 postgres_storage_mb                   = 32768
 postgres_database_name                = "spendpilot"
 postgres_server_name                  = "spendpilot-prod-pgsql-2300"
+postgres_dr_replica_enabled           = true
+postgres_dr_location                  = "South India"
+postgres_dr_vnet_cidr                 = "10.41.0.0/16"
+postgres_dr_db_subnet_cidr            = "10.41.20.0/24"
+postgres_dr_replica_server_name       = "spendpilot-prod-pgsql-2300-dr"
 
 # AI services
 document_intelligence_sku                   = "S0"
@@ -62,12 +67,13 @@ app_secret_name      = "spend-control-secrets"
 frontend_redirect_uris = [
   "http://localhost:3000/login",
   "https://fin.nexaflow.site/login",
+  "https://costpilot.online/login",
   "https://myfinagent.online/login",
   "https://www.myfinagent.online/login",
 ]
 auth_authority                 = "https://login.microsoftonline.com/common"
 backend_application_id_uri     = "api://spendpilot-prod-backend-api-2300"
-backend_cors_origins           = "https://fin.nexaflow.site,https://myfinagent.online,https://www.myfinagent.online"
+backend_cors_origins           = "https://fin.nexaflow.site,https://costpilot.online,https://myfinagent.online,https://www.myfinagent.online"
 finance_default_currency       = "INR"
 frontend_api_base_url          = "/api"
 dev_auth_secret                = "disabled-in-production"
@@ -77,18 +83,18 @@ key_vault_name                 = "spendpilot-prod-kv-2300"
 documents_storage_account_name = "sp2300proddocs"
 
 # Front Door
-frontdoor_enabled                  = false
+frontdoor_enabled                  = true
 frontdoor_origin_use_https         = false
 frontdoor_origin_hostname_override = "4.247.241.143"
-frontdoor_apex_host_name           = "myfinagent.online"
-frontdoor_www_host_name            = "www.myfinagent.online"
+frontdoor_apex_host_name           = "costpilot.online"
+frontdoor_www_host_name            = ""
 
 # Application Gateway edge
 app_gateway_enabled              = true
 app_gateway_subnet_cidr          = "10.40.30.0/24"
 app_gateway_min_capacity         = 1
 app_gateway_max_capacity         = 2
-app_gateway_backend_ip_addresses = ["4.224.237.131"]
+app_gateway_backend_ip_addresses = ["4.247.241.143"]
 app_gateway_backend_port         = 80
 app_gateway_listener_host_name   = ""
 app_gateway_tls_enabled          = true

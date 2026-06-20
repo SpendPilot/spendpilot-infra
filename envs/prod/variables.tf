@@ -304,6 +304,42 @@ variable "postgres_server_name" {
   default     = "spendpilot-prod-pgsql"
 }
 
+variable "postgres_dr_replica_enabled" {
+  description = "Whether to provision a cross-region PostgreSQL read replica for disaster recovery."
+  type        = bool
+  default     = false
+}
+
+variable "postgres_dr_location" {
+  description = "Azure region used for the cross-region PostgreSQL disaster recovery replica."
+  type        = string
+  default     = "South India"
+}
+
+variable "postgres_dr_vnet_cidr" {
+  description = "Dedicated virtual network CIDR for the PostgreSQL disaster recovery replica."
+  type        = string
+  default     = "10.41.0.0/16"
+}
+
+variable "postgres_dr_db_subnet_cidr" {
+  description = "Delegated subnet CIDR for the PostgreSQL disaster recovery replica."
+  type        = string
+  default     = "10.41.20.0/24"
+}
+
+variable "postgres_dr_zone" {
+  description = "Availability zone used for the PostgreSQL disaster recovery replica."
+  type        = string
+  default     = "1"
+}
+
+variable "postgres_dr_replica_server_name" {
+  description = "Optional explicit name override for the PostgreSQL disaster recovery replica."
+  type        = string
+  default     = ""
+}
+
 variable "backend_resource_group_name" {
   description = "Azure Blob backend resource group used to read the global-shared remote state."
   type        = string

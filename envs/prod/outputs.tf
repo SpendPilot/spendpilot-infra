@@ -78,6 +78,26 @@ output "postgres_database_url_template" {
   value = "postgresql+psycopg://${var.postgres_admin_login}:<postgres_admin_password>@${module.postgres.fqdn}:5432/${module.postgres.database_name}?sslmode=require"
 }
 
+output "postgres_dr_replica_enabled" {
+  value = var.postgres_dr_replica_enabled
+}
+
+output "postgres_dr_replica_location" {
+  value = var.postgres_dr_replica_enabled ? azurerm_postgresql_flexible_server.postgres_dr_replica[0].location : null
+}
+
+output "postgres_dr_replica_server_name" {
+  value = var.postgres_dr_replica_enabled ? azurerm_postgresql_flexible_server.postgres_dr_replica[0].name : null
+}
+
+output "postgres_dr_replica_fqdn" {
+  value = var.postgres_dr_replica_enabled ? azurerm_postgresql_flexible_server.postgres_dr_replica[0].fqdn : null
+}
+
+output "postgres_dr_replica_private_dns_zone_name" {
+  value = var.postgres_dr_replica_enabled ? azurerm_private_dns_zone.postgres_dr[0].name : null
+}
+
 output "backend_api_audience" {
   value = var.backend_application_id_uri
 }
@@ -110,8 +130,8 @@ output "tenant_admin_consent_contract" {
     backend_application_id_uri = var.backend_application_id_uri
     delegated_scope            = "${var.backend_application_id_uri}/access_as_user"
     admin_consent_scope        = "${var.backend_application_id_uri}/.default"
-    redirect_uri_hint          = "Use any registered HTTPS login redirect URI for the SPA, such as https://fin.nexaflow.site/login"
-    admin_consent_url_template = "https://login.microsoftonline.com/<tenant-id-or-domain>/v2.0/adminconsent?client_id=${azuread_application.frontend_spa.client_id}&scope=${urlencode("${var.backend_application_id_uri}/.default")}&redirect_uri=${urlencode("https://fin.nexaflow.site/login")}"
+    redirect_uri_hint          = "Use any registered HTTPS login redirect URI for the SPA, such as https://costpilot.online/login"
+    admin_consent_url_template = "https://login.microsoftonline.com/<tenant-id-or-domain>/v2.0/adminconsent?client_id=${azuread_application.frontend_spa.client_id}&scope=${urlencode("${var.backend_application_id_uri}/.default")}&redirect_uri=${urlencode("https://costpilot.online/login")}"
     governance_model = {
       first_user_in_tenant_becomes = "org_owner"
       subsequent_users_become      = "employee"
@@ -152,12 +172,67 @@ output "frontdoor_www_validation" {
   } : null
 }
 
+output "frontdoor_origin_target" {
+  value = {
+    hostname_or_ip      = azurerm_cdn_frontdoor_origin.kgateway[0].host_name
+    origin_host_header  = azurerm_cdn_frontdoor_origin.kgateway[0].origin_host_header
+    forwarding_protocol = var.frontdoor_origin_use_https ? "HttpsOnly" : "HttpOnly"
+    probe_protocol      = var.frontdoor_origin_use_https ? "Https" : "Http"
+    probe_path          = "/health"
+  }
+}
+
 output "app_gateway_name" {
   value = var.app_gateway_enabled && length(module.app_gateway_edge) > 0 ? module.app_gateway_edge[0].name : null
 }
 
 output "app_gateway_public_ip" {
   value = var.app_gateway_enabled && length(module.app_gateway_edge) > 0 ? module.app_gateway_edge[0].public_ip_address : null
+}
+
+output "app_gateway_fallback_contract" {
+  value = var.app_gateway_enabled && length(module.app_gateway_edge) > 0 ? {
+    temporary_public_ip   = module.app_gateway_edge[0].public_ip_address
+    backend_target_ips    = var.app_gateway_backend_ip_addresses
+    tls_host_name         = var.app_gateway_tls_host_name
+    listener_host_name    = var.app_gateway_listener_host_name
+    rollback_path_summary = "Keep Application Gateway available as the temporary rollback path while Front Door onboarding and DNS validation complete."
+  } : null
+}
+
+output "prod_edge_transition_contract" {
+  value = {
+    target_public_hostname      = local.frontdoor_apex_host_name
+    frontdoor_enabled           = local.frontdoor_enabled
+    frontdoor_endpoint_hostname = local.frontdoor_enabled && length(azurerm_cdn_frontdoor_endpoint.this) > 0 ? azurerm_cdn_frontdoor_endpoint.this[0].host_name : null
+    app_gateway_fallback_host   = var.app_gateway_tls_host_name
+    app_gateway_fallback_ip     = var.app_gateway_enabled && length(module.app_gateway_edge) > 0 ? module.app_gateway_edge[0].public_ip_address : null
+    dns_cutover_required        = true
+    rollback_strategy           = "Leave Application Gateway in place until Front Door custom domain validation, certificate issuance, and runtime checks succeed."
+  }
+}
+
+output "public_host_name" {
+  value = local.frontdoor_apex_host_name
+}
+
+output "frontdoor_origin_contract" {
+  value = {
+    environment          = var.environment
+    namespace            = var.namespace
+    origin_hostname      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null)
+    origin_host_header   = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null)
+    gateway_public_ip    = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null)
+    gateway_public_fqdn  = try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, null)
+    health_probe_path    = "/health"
+    http_port            = 80
+    https_port           = 443
+    origin_protocol      = var.frontdoor_origin_use_https ? "Https" : "Http"
+    forwarding_protocol  = var.frontdoor_origin_use_https ? "HttpsOnly" : "HttpOnly"
+    frontend_hostnames   = compact([local.frontdoor_apex_host_name, local.frontdoor_www_host_name])
+    api_path_prefixes    = ["/api/auth", "/api/admin", "/api/finance", "/api/documents", "/api/ai", "/health", "/ready"]
+    frontend_path_prefix = "/*"
+  }
 }
 
 output "argocd_server_service_type" {

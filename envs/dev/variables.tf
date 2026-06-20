@@ -7,7 +7,7 @@ variable "prefix" {
 variable "environment" {
   description = "Deployment environment name."
   type        = string
-  default     = "prod"
+  default     = "dev"
 }
 
 variable "location" {
@@ -34,6 +34,36 @@ variable "tags" {
   default     = {}
 }
 
+variable "backend_resource_group_name" {
+  description = "Azure Blob backend resource group used by remote state reads."
+  type        = string
+  default     = "terraform-rg"
+}
+
+variable "backend_storage_account_name" {
+  description = "Azure Blob backend storage account used by remote state reads."
+  type        = string
+  default     = "lijaztf"
+}
+
+variable "backend_container_name" {
+  description = "Azure Blob backend container used by remote state reads."
+  type        = string
+  default     = "states"
+}
+
+variable "global_shared_state_key" {
+  description = "Remote state key for the global-shared root."
+  type        = string
+  default     = "global-shared.tfstate"
+}
+
+variable "nonprod_shared_state_key" {
+  description = "Remote state key for the nonprod-shared root."
+  type        = string
+  default     = "nonprod-shared.tfstate"
+}
+
 variable "kubernetes_version" {
   description = "AKS version kept within the current kGateway support matrix."
   type        = string
@@ -50,6 +80,90 @@ variable "gateway_api_version" {
   description = "Gateway API CRD release version."
   type        = string
   default     = "1.5.1"
+}
+
+variable "argocd_chart_version" {
+  description = "Pinned Argo CD Helm chart version."
+  type        = string
+  default     = "9.5.21"
+}
+
+variable "argocd_namespace" {
+  description = "Namespace where Argo CD will be installed."
+  type        = string
+  default     = "argocd"
+}
+
+variable "argocd_server_service_type" {
+  description = "Kubernetes Service type used to expose the Argo CD server."
+  type        = string
+  default     = "LoadBalancer"
+}
+
+variable "argocd_server_service_annotations" {
+  description = "Optional annotations for the Argo CD server service."
+  type        = map(string)
+  default     = {}
+}
+
+variable "argocd_server_service_load_balancer_source_ranges" {
+  description = "Optional source ranges allowed to reach the Argo CD LoadBalancer service."
+  type        = list(string)
+  default     = []
+}
+
+variable "argocd_server_load_balancer_ip" {
+  description = "Optional static public IP to assign to the Argo CD LoadBalancer service."
+  type        = string
+  default     = ""
+}
+
+variable "key_vault_name" {
+  description = "Optional override for the dev Key Vault name."
+  type        = string
+  default     = ""
+}
+
+variable "key_vault_sku_name" {
+  description = "Key Vault SKU used for dev runtime secrets."
+  type        = string
+  default     = "standard"
+}
+
+variable "key_vault_public_network_access_enabled" {
+  description = "Whether the dev Key Vault is reachable over public network access."
+  type        = bool
+  default     = true
+}
+
+variable "key_vault_secrets_provider_enabled" {
+  description = "Enable the AKS Key Vault Secrets Provider addon in dev."
+  type        = bool
+  default     = true
+}
+
+variable "key_vault_secret_rotation_enabled" {
+  description = "Enable automatic Key Vault secret rotation for the AKS addon in dev."
+  type        = bool
+  default     = true
+}
+
+variable "key_vault_secret_rotation_interval" {
+  description = "Rotation poll interval used by the AKS Key Vault Secrets Provider addon in dev."
+  type        = string
+  default     = "2m"
+}
+
+variable "key_vault_database_url_secret_name" {
+  description = "Key Vault secret name that stores DATABASE_URL for dev."
+  type        = string
+  default     = "spend-control-database-url"
+}
+
+variable "key_vault_dev_auth_secret_name" {
+  description = "Key Vault secret name that stores DEV_AUTH_SECRET for dev."
+  type        = string
+  default     = "spend-control-dev-auth-secret"
 }
 
 variable "private_cluster_enabled" {
@@ -189,6 +303,42 @@ variable "postgres_database_name" {
   default = "spendcontrol"
 }
 
+variable "postgres_dr_replica_enabled" {
+  description = "Whether to provision a cross-region PostgreSQL read replica for disaster recovery."
+  type        = bool
+  default     = false
+}
+
+variable "postgres_dr_location" {
+  description = "Azure region used for the cross-region PostgreSQL disaster recovery replica."
+  type        = string
+  default     = "South India"
+}
+
+variable "postgres_dr_vnet_cidr" {
+  description = "Dedicated virtual network CIDR for the PostgreSQL disaster recovery replica."
+  type        = string
+  default     = "10.42.0.0/16"
+}
+
+variable "postgres_dr_db_subnet_cidr" {
+  description = "Delegated subnet CIDR for the PostgreSQL disaster recovery replica."
+  type        = string
+  default     = "10.42.20.0/24"
+}
+
+variable "postgres_dr_zone" {
+  description = "Availability zone used for the PostgreSQL disaster recovery replica."
+  type        = string
+  default     = "1"
+}
+
+variable "postgres_dr_replica_server_name" {
+  description = "Optional explicit name override for the PostgreSQL disaster recovery replica."
+  type        = string
+  default     = ""
+}
+
 variable "acr_sku" {
   type    = string
   default = "Standard"
@@ -237,57 +387,21 @@ variable "frontdoor_origin_hostname_override" {
 }
 
 variable "frontdoor_apex_custom_domain_id" {
-  description = "Optional Azure resource ID for the validated apex Front Door custom domain, such as myfinagent.online."
+  description = "Optional Azure resource ID for the validated dev Front Door custom domain, such as dev.costpilot.online."
   type        = string
   default     = ""
 }
 
 variable "frontdoor_www_custom_domain_id" {
-  description = "Optional Azure resource ID for the validated www Front Door custom domain, such as www.myfinagent.online."
+  description = "Optional Azure resource ID for an additional validated dev Front Door custom domain."
   type        = string
   default     = ""
 }
 
-variable "document_intelligence_sku" {
-  description = "Document Intelligence SKU."
+variable "public_host_name" {
+  description = "Primary public hostname expected to route to the dev environment."
   type        = string
-  default     = "S0"
-}
-
-variable "foundry_sku_name" {
-  description = "Azure AI Foundry/OpenAI account SKU."
-  type        = string
-  default     = "S0"
-}
-
-variable "foundry_location" {
-  description = "Region used for Azure AI Foundry model hosting. Kept separate because Central India currently rejects the tested pay-per-token model deployments."
-  type        = string
-  default     = "East US 2"
-}
-
-variable "openai_model_name" {
-  description = "Default Azure AI Foundry model deployment name."
-  type        = string
-  default     = "gpt-4.1-mini"
-}
-
-variable "openai_model_version" {
-  description = "Default Azure AI Foundry model version."
-  type        = string
-  default     = "2025-04-14"
-}
-
-variable "openai_deployment_sku_name" {
-  description = "Azure OpenAI deployment SKU."
-  type        = string
-  default     = "GlobalStandard"
-}
-
-variable "openai_deployment_capacity" {
-  description = "Azure OpenAI deployment capacity."
-  type        = number
-  default     = 1
+  default     = "dev.costpilot.online"
 }
 
 variable "platform_admin_emails" {

@@ -1,6 +1,37 @@
 data "azurerm_client_config" "current" {}
 data "azuread_client_config" "current" {}
 
+data "terraform_remote_state" "global_shared" {
+  backend = "azurerm"
+
+  config = {
+    resource_group_name  = var.backend_resource_group_name
+    storage_account_name = var.backend_storage_account_name
+    container_name       = var.backend_container_name
+    key                  = var.global_shared_state_key
+    subscription_id      = data.azurerm_client_config.current.subscription_id
+    tenant_id            = data.azurerm_client_config.current.tenant_id
+  }
+}
+
+data "terraform_remote_state" "nonprod_shared" {
+  backend = "azurerm"
+
+  config = {
+    resource_group_name  = var.backend_resource_group_name
+    storage_account_name = var.backend_storage_account_name
+    container_name       = var.backend_container_name
+    key                  = var.nonprod_shared_state_key
+    subscription_id      = data.azurerm_client_config.current.subscription_id
+    tenant_id            = data.azurerm_client_config.current.tenant_id
+  }
+}
+
+data "azurerm_container_registry" "global_shared" {
+  name                = data.terraform_remote_state.global_shared.outputs.acr_name
+  resource_group_name = data.terraform_remote_state.global_shared.outputs.resource_group_name
+}
+
 module "resource_group" {
   source = "../../modules/resource-group"
 
@@ -72,29 +103,89 @@ module "postgres" {
   tags                         = local.tags
 }
 
+module "postgres_dr_network" {
+  count  = var.postgres_dr_replica_enabled ? 1 : 0
+  source = "../../modules/network"
+
+  name                = "${local.name}-dr-vnet"
+  location            = var.postgres_dr_location
+  resource_group_name = module.resource_group.name
+  address_space       = [var.postgres_dr_vnet_cidr]
+  tags                = local.tags
+
+  subnets = {
+    "db-subnet" = {
+      address_prefixes   = [var.postgres_dr_db_subnet_cidr]
+      service_endpoints  = ["Microsoft.Storage"]
+      delegation_name    = "postgres-flex"
+      delegation_service = "Microsoft.DBforPostgreSQL/flexibleServers"
+    }
+  }
+}
+
+resource "azurerm_private_dns_zone" "postgres_dr" {
+  count = var.postgres_dr_replica_enabled ? 1 : 0
+
+  name                = "${local.name}-dr.postgres.database.azure.com"
+  resource_group_name = module.resource_group.name
+  tags                = local.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "postgres_dr" {
+  count = var.postgres_dr_replica_enabled ? 1 : 0
+
+  name                  = "${local.name}-dr-vnet-link"
+  private_dns_zone_name = azurerm_private_dns_zone.postgres_dr[0].name
+  resource_group_name   = module.resource_group.name
+  virtual_network_id    = module.postgres_dr_network[0].virtual_network_id
+  tags                  = local.tags
+}
+
+resource "azurerm_postgresql_flexible_server" "postgres_dr_replica" {
+  count = var.postgres_dr_replica_enabled ? 1 : 0
+
+  name                          = trimspace(var.postgres_dr_replica_server_name) != "" ? trimspace(var.postgres_dr_replica_server_name) : "${local.name}-pgsql-dr"
+  resource_group_name           = module.resource_group.name
+  location                      = var.postgres_dr_location
+  create_mode                   = "Replica"
+  source_server_id              = module.postgres.server_id
+  delegated_subnet_id           = module.postgres_dr_network[0].subnet_ids["db-subnet"]
+  private_dns_zone_id           = azurerm_private_dns_zone.postgres_dr[0].id
+  public_network_access_enabled = false
+  zone                          = var.postgres_dr_zone
+  tags = merge(local.tags, {
+    role = "postgres-dr-replica"
+  })
+
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.postgres_dr]
+}
+
 module "aks_cluster" {
   source = "../../modules/aks-cluster"
 
-  name                       = "${local.name}-aks"
-  location                   = module.resource_group.location
-  resource_group_name        = module.resource_group.name
-  dns_prefix                 = "${local.name}-dns"
-  kubernetes_version         = var.kubernetes_version
-  private_cluster_enabled    = var.private_cluster_enabled
-  authorized_ip_ranges       = var.authorized_ip_ranges
-  log_analytics_workspace_id = module.log_analytics.id
-  system_subnet_id           = module.network.subnet_ids["aks-subnet"]
-  user_subnet_id             = module.network.subnet_ids["aks-subnet"]
-  system_node_vm_size        = var.system_node_vm_size
-  system_node_min_count      = var.system_node_min_count
-  system_node_max_count      = var.system_node_max_count
-  user_node_vm_size          = var.user_node_vm_size
-  user_node_min_count        = var.user_node_min_count
-  user_node_max_count        = var.user_node_max_count
-  node_resource_group_name   = var.aks_node_resource_group_name
-  service_cidr               = var.service_cidr
-  dns_service_ip             = var.dns_service_ip
-  tags                       = local.tags
+  name                               = "${local.name}-aks"
+  location                           = module.resource_group.location
+  resource_group_name                = module.resource_group.name
+  dns_prefix                         = "${local.name}-dns"
+  kubernetes_version                 = var.kubernetes_version
+  private_cluster_enabled            = var.private_cluster_enabled
+  authorized_ip_ranges               = var.authorized_ip_ranges
+  log_analytics_workspace_id         = module.log_analytics.id
+  system_subnet_id                   = module.network.subnet_ids["aks-subnet"]
+  user_subnet_id                     = module.network.subnet_ids["aks-subnet"]
+  system_node_vm_size                = var.system_node_vm_size
+  system_node_min_count              = var.system_node_min_count
+  system_node_max_count              = var.system_node_max_count
+  user_node_vm_size                  = var.user_node_vm_size
+  user_node_min_count                = var.user_node_min_count
+  user_node_max_count                = var.user_node_max_count
+  node_resource_group_name           = var.aks_node_resource_group_name
+  service_cidr                       = var.service_cidr
+  dns_service_ip                     = var.dns_service_ip
+  key_vault_secrets_provider_enabled = var.key_vault_secrets_provider_enabled
+  secret_rotation_enabled            = var.key_vault_secret_rotation_enabled
+  secret_rotation_interval           = var.key_vault_secret_rotation_interval
+  tags                               = local.tags
 }
 
 data "azurerm_kubernetes_cluster" "credentials" {
@@ -105,7 +196,7 @@ data "azurerm_kubernetes_cluster" "credentials" {
 }
 
 resource "azurerm_role_assignment" "acr_pull" {
-  scope                = module.container_registry.id
+  scope                = data.azurerm_container_registry.global_shared.id
   role_definition_name = "AcrPull"
   principal_id         = module.aks_cluster.kubelet_object_id
 }
@@ -115,6 +206,19 @@ resource "azurerm_user_assigned_identity" "workload" {
   location            = module.resource_group.location
   resource_group_name = module.resource_group.name
   tags                = local.tags
+}
+
+resource "azurerm_key_vault" "workload" {
+  name                          = local.key_vault_name
+  location                      = module.resource_group.location
+  resource_group_name           = module.resource_group.name
+  tenant_id                     = data.azurerm_client_config.current.tenant_id
+  sku_name                      = var.key_vault_sku_name
+  rbac_authorization_enabled    = true
+  public_network_access_enabled = var.key_vault_public_network_access_enabled
+  purge_protection_enabled      = true
+  soft_delete_retention_days    = 90
+  tags                          = local.tags
 }
 
 resource "azurerm_federated_identity_credential" "workload" {
@@ -147,44 +251,6 @@ resource "azurerm_storage_container" "documents" {
   container_access_type = "private"
 }
 
-resource "azurerm_cognitive_account" "document_intelligence" {
-  name                          = "${local.name}-docint"
-  location                      = module.resource_group.location
-  resource_group_name           = module.resource_group.name
-  kind                          = "FormRecognizer"
-  sku_name                      = var.document_intelligence_sku
-  custom_subdomain_name         = substr("${local.compact_name}doc", 0, 63)
-  public_network_access_enabled = true
-  tags                          = local.tags
-}
-
-resource "azurerm_cognitive_account" "foundry" {
-  name                          = "${local.name}-foundry"
-  location                      = var.foundry_location
-  resource_group_name           = module.resource_group.name
-  kind                          = "AIServices"
-  sku_name                      = var.foundry_sku_name
-  custom_subdomain_name         = substr("${local.compact_name}ai", 0, 63)
-  public_network_access_enabled = true
-  tags                          = local.tags
-}
-
-resource "azurerm_cognitive_deployment" "foundry_model" {
-  name                 = replace(var.openai_model_name, ".", "-")
-  cognitive_account_id = azurerm_cognitive_account.foundry.id
-
-  model {
-    format  = "OpenAI"
-    name    = var.openai_model_name
-    version = var.openai_model_version
-  }
-
-  sku {
-    name     = var.openai_deployment_sku_name
-    capacity = var.openai_deployment_capacity
-  }
-}
-
 resource "azurerm_role_assignment" "storage_blob_contributor" {
   scope                = azurerm_storage_account.documents.id
   role_definition_name = "Storage Blob Data Contributor"
@@ -192,27 +258,36 @@ resource "azurerm_role_assignment" "storage_blob_contributor" {
 }
 
 resource "azurerm_role_assignment" "docint_user" {
-  scope                = azurerm_cognitive_account.document_intelligence.id
+  scope                = data.terraform_remote_state.nonprod_shared.outputs.shared_document_intelligence_id
   role_definition_name = "Cognitive Services User"
   principal_id         = azurerm_user_assigned_identity.workload.principal_id
 }
 
 resource "azurerm_role_assignment" "foundry_user" {
-  scope                = azurerm_cognitive_account.foundry.id
+  scope                = data.terraform_remote_state.nonprod_shared.outputs.shared_foundry_id
   role_definition_name = "Cognitive Services OpenAI User"
   principal_id         = azurerm_user_assigned_identity.workload.principal_id
 }
 
-resource "azurerm_cdn_frontdoor_profile" "this" {
-  name                = "${local.name}-fd"
-  resource_group_name = module.resource_group.name
-  sku_name            = var.frontdoor_sku_name
-  tags                = local.tags
+resource "azurerm_role_assignment" "key_vault_secrets_user" {
+  scope                = azurerm_key_vault.workload.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.workload.principal_id
 }
 
-resource "azurerm_cdn_frontdoor_endpoint" "this" {
-  name                     = "${local.name}-ep"
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this.id
+resource "azurerm_role_assignment" "key_vault_secrets_officer_current_user" {
+  scope                = azurerm_key_vault.workload.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "time_sleep" "wait_for_key_vault_rbac" {
+  create_duration = "45s"
+
+  depends_on = [
+    azurerm_role_assignment.key_vault_secrets_user,
+    azurerm_role_assignment.key_vault_secrets_officer_current_user,
+  ]
 }
 
 resource "azuread_application" "backend_api" {
@@ -342,81 +417,31 @@ resource "azuread_application_pre_authorized" "backend_pre_authorize_frontend" {
 }
 
 provider "kubernetes" {
-  config_path = "${path.root}/.generated-kubeconfig"
+  config_path = fileexists("${path.root}/.generated-kubeconfig") ? "${path.root}/.generated-kubeconfig" : pathexpand("~/.kube/config")
 }
 
 provider "helm" {
   kubernetes {
-    config_path = "${path.root}/.generated-kubeconfig"
+    config_path = fileexists("${path.root}/.generated-kubeconfig") ? "${path.root}/.generated-kubeconfig" : pathexpand("~/.kube/config")
   }
 }
 
-resource "terraform_data" "build_identity_image" {
-  count = var.build_images_during_apply ? 1 : 0
-
+resource "terraform_data" "aks_get_credentials" {
   triggers_replace = {
-    image_tag  = var.image_tag
-    dockerfile = filesha256("${path.root}/../../../spendpilot-services/services/identity/Dockerfile")
-    source     = local.backend_source_hash
+    cluster_name        = module.aks_cluster.name
+    resource_group_name = module.resource_group.name
+    kubeconfig_path     = "${path.root}/.generated-kubeconfig"
   }
 
   provisioner "local-exec" {
-    command = "az acr build --registry ${module.container_registry.name} --image spend-control-identity:${var.image_tag} --file ${path.root}/../../../spendpilot-services/services/identity/Dockerfile ${path.root}/../../../spendpilot-services"
+    interpreter = ["PowerShell", "-Command"]
+    command     = "az aks get-credentials --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --admin --overwrite-existing --file ${path.root}/.generated-kubeconfig"
     environment = {
       AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
     }
   }
-}
 
-resource "terraform_data" "build_finance_image" {
-  count = var.build_images_during_apply ? 1 : 0
-
-  triggers_replace = {
-    image_tag  = var.image_tag
-    dockerfile = filesha256("${path.root}/../../../spendpilot-services/services/finance/Dockerfile")
-    source     = local.backend_source_hash
-  }
-
-  provisioner "local-exec" {
-    command = "az acr build --registry ${module.container_registry.name} --image spend-control-finance:${var.image_tag} --file ${path.root}/../../../spendpilot-services/services/finance/Dockerfile ${path.root}/../../../spendpilot-services"
-    environment = {
-      AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
-    }
-  }
-}
-
-resource "terraform_data" "build_documents_image" {
-  count = var.build_images_during_apply ? 1 : 0
-
-  triggers_replace = {
-    image_tag  = var.image_tag
-    dockerfile = filesha256("${path.root}/../../../spendpilot-services/services/documents/Dockerfile")
-    source     = local.backend_source_hash
-  }
-
-  provisioner "local-exec" {
-    command = "az acr build --registry ${module.container_registry.name} --image spend-control-documents:${var.image_tag} --file ${path.root}/../../../spendpilot-services/services/documents/Dockerfile ${path.root}/../../../spendpilot-services"
-    environment = {
-      AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
-    }
-  }
-}
-
-resource "terraform_data" "build_frontend_image" {
-  count = var.build_images_during_apply ? 1 : 0
-
-  triggers_replace = {
-    image_tag  = var.image_tag
-    dockerfile = filesha256("${path.root}/../../../spendpilot-frontend/Dockerfile")
-    source     = local.frontend_source_hash
-  }
-
-  provisioner "local-exec" {
-    command = "az acr build --registry ${module.container_registry.name} --image spend-control-frontend:${var.image_tag} ${path.root}/../../../spendpilot-frontend"
-    environment = {
-      AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
-    }
-  }
+  depends_on = [data.azurerm_kubernetes_cluster.credentials]
 }
 
 resource "terraform_data" "gateway_api_crds" {
@@ -427,11 +452,16 @@ resource "terraform_data" "gateway_api_crds" {
 
   provisioner "local-exec" {
     interpreter = ["PowerShell", "-Command"]
-    command     = "az aks command invoke --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --command 'kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v${var.gateway_api_version}/standard-install.yaml'"
+    command     = <<-EOT
+      $ErrorActionPreference = 'Stop'
+      az aks command invoke --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --command "kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v${var.gateway_api_version}/standard-install.yaml"
+    EOT
     environment = {
       AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
     }
   }
+
+  depends_on = [terraform_data.aks_get_credentials]
 }
 
 resource "helm_release" "kgateway_crds" {
@@ -441,7 +471,7 @@ resource "helm_release" "kgateway_crds" {
 
   create_namespace = true
 
-  depends_on = [terraform_data.gateway_api_crds]
+  depends_on = [terraform_data.aks_get_credentials, terraform_data.gateway_api_crds]
 }
 
 resource "helm_release" "kgateway" {
@@ -463,190 +493,91 @@ resource "helm_release" "kgateway" {
     }),
   ]
 
-  depends_on = [helm_release.kgateway_crds]
+  depends_on = [terraform_data.aks_get_credentials, helm_release.kgateway_crds]
 }
 
 resource "kubernetes_namespace" "application" {
   metadata {
     name = var.namespace
   }
+
+  depends_on = [terraform_data.aks_get_credentials]
 }
 
-resource "terraform_data" "gateway_origin_tls_secret" {
+resource "terraform_data" "bootstrap_gateway" {
   triggers_replace = {
-    cluster_name = module.aks_cluster.name
-    namespace    = var.namespace
-    secret_name  = local.gateway_origin_tls_secret_name
+    cluster_name             = module.aks_cluster.name
+    namespace                = var.namespace
+    gateway_name             = "spend-control-gateway"
+    gateway_class_name       = "kgateway"
+    frontdoor_origin_use_tls = tostring(var.frontdoor_origin_use_https)
   }
 
   provisioner "local-exec" {
     interpreter = ["PowerShell", "-Command"]
     command     = <<-EOT
-      $tempDir = Join-Path $env:TEMP 'spend-control-gateway-origin-tls'
-      New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-      $pfxPath = Join-Path $tempDir 'origin.pfx'
-      $certPemPath = Join-Path $tempDir 'origin.crt'
-      $keyPemPath = Join-Path $tempDir 'origin.key'
-      $password = ConvertTo-SecureString -String 'SpendControlOriginTls!2026' -Force -AsPlainText
-      $cert = New-SelfSignedCertificate -DnsName 'spend-control-gateway','spend-control-gateway.${var.namespace}','spend-control-gateway.${var.namespace}.svc','spend-control-gateway.${var.namespace}.svc.cluster.local' -CertStoreLocation 'Cert:\CurrentUser\My' -NotAfter (Get-Date).AddYears(1) -KeyExportPolicy Exportable
-      Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $password | Out-Null
-      @'
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.serialization import pkcs12
-from pathlib import Path
-import sys
-
-pfx_path = Path(sys.argv[1])
-password = sys.argv[2].encode("utf-8")
-cert_pem_path = Path(sys.argv[3])
-key_pem_path = Path(sys.argv[4])
-
-private_key, certificate, _ = pkcs12.load_key_and_certificates(pfx_path.read_bytes(), password)
-cert_pem_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
-key_pem_path.write_bytes(
-    private_key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.TraditionalOpenSSL,
-        serialization.NoEncryption(),
-    )
-)
-'@ | python - $pfxPath 'SpendControlOriginTls!2026' $certPemPath $keyPemPath
-      $remoteCommand = "kubectl create secret tls ${local.gateway_origin_tls_secret_name} -n ${var.namespace} --cert=origin.crt --key=origin.key --dry-run=client -o yaml | kubectl apply -f -"
-      az aks command invoke --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --file $certPemPath --file $keyPemPath --command $remoteCommand
-      Remove-Item -Force $pfxPath, $certPemPath, $keyPemPath
+      $ErrorActionPreference = 'Stop'
+      $gatewayYaml = @'
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: spend-control-gateway
+  namespace: ${var.namespace}
+spec:
+  gatewayClassName: kgateway
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+'@
+      $gatewayPath = Join-Path $env:TEMP 'spend-control-gateway.yaml'
+      Set-Content -LiteralPath $gatewayPath -Value $gatewayYaml -Encoding ascii
+      az aks command invoke --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --file $gatewayPath --command "kubectl apply -f spend-control-gateway.yaml"
+      Remove-Item -Force $gatewayPath
     EOT
     environment = {
       AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
     }
   }
 
-  depends_on = [kubernetes_namespace.application]
+  depends_on = [terraform_data.aks_get_credentials, kubernetes_namespace.application]
 }
 
-resource "helm_release" "application" {
-  name             = "spend-control"
-  chart            = "${path.root}/../../../spendpilot-helm/charts/spendpilot"
-  namespace        = var.namespace
-  create_namespace = false
-  timeout          = 600
-  wait_for_jobs    = true
+resource "helm_release" "argocd" {
+  name       = "argocd"
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argo-cd"
+  version    = var.argocd_chart_version
+  namespace  = var.argocd_namespace
+
+  create_namespace = true
+  timeout          = 900
+  wait             = true
 
   values = [
     yamlencode({
-      namespace = {
-        create = false
-        name   = var.namespace
-      }
-      gateway = {
-        enabled   = true
-        className = "kgateway"
-        name      = "spend-control-gateway"
-        listener = {
-          port     = 80
-          protocol = "HTTP"
+      server = {
+        service = {
+          type                     = var.argocd_server_service_type
+          annotations              = var.argocd_server_service_annotations
+          loadBalancerIP           = trimspace(var.argocd_server_load_balancer_ip) != "" ? trimspace(var.argocd_server_load_balancer_ip) : null
+          loadBalancerSourceRanges = length(var.argocd_server_service_load_balancer_source_ranges) > 0 ? var.argocd_server_service_load_balancer_source_ranges : null
         }
-        tls = {
-          enabled               = var.frontdoor_origin_use_https
-          port                  = 443
-          protocol              = "HTTPS"
-          mode                  = "Terminate"
-          certificateSecretName = local.gateway_origin_tls_secret_name
-        }
-      }
-      serviceAccount = {
-        create = true
-        name   = var.service_account_name
-      }
-      imagePullSecrets = []
-      rollout = {
-        revision = local.application_rollout_revision
-      }
-      frontend = {
-        image = {
-          repository = local.frontend_repo
-          tag        = var.image_tag
-          pullPolicy = var.image_tag == "latest" ? "Always" : "IfNotPresent"
-        }
-      }
-      identityService = {
-        image = {
-          repository = local.identity_repo
-          tag        = var.image_tag
-          pullPolicy = var.image_tag == "latest" ? "Always" : "IfNotPresent"
-        }
-      }
-      financeService = {
-        image = {
-          repository = local.finance_repo
-          tag        = var.image_tag
-          pullPolicy = var.image_tag == "latest" ? "Always" : "IfNotPresent"
-        }
-      }
-      documentsService = {
-        image = {
-          repository = local.documents_repo
-          tag        = var.image_tag
-          pullPolicy = var.image_tag == "latest" ? "Always" : "IfNotPresent"
-        }
-      }
-      migrationJob = {
-        enabled = true
-        image = {
-          repository = local.identity_repo
-          tag        = var.image_tag
-          pullPolicy = var.image_tag == "latest" ? "Always" : "IfNotPresent"
-        }
-      }
-      env = {
-        appEnv                 = "production"
-        backendCorsOrigins     = "https://${azurerm_cdn_frontdoor_endpoint.this.host_name}"
-        financeDefaultCurrency = "INR"
-      }
-      auth = {
-        mode                = "entra"
-        authority           = "https://login.microsoftonline.com/common"
-        frontendClientId    = azuread_application.frontend_spa.client_id
-        backendClientId     = azuread_application.backend_api.client_id
-        backendAudience     = local.backend_audience
-        apiScope            = "${local.backend_audience}/access_as_user"
-        allowedTenantIds    = var.allowed_tenant_ids
-        platformAdminEmails = var.platform_admin_emails
-      }
-      azure = {
-        tenantId                     = data.azurerm_client_config.current.tenant_id
-        managedIdentityClientId      = azurerm_user_assigned_identity.workload.client_id
-        aiFoundryEndpoint            = azurerm_cognitive_account.foundry.endpoint
-        aiProjectEndpoint            = ""
-        aiModelDeployment            = azurerm_cognitive_deployment.foundry_model.name
-        documentIntelligenceEndpoint = azurerm_cognitive_account.document_intelligence.endpoint
-        storageAccountUrl            = azurerm_storage_account.documents.primary_blob_endpoint
-        storageContainerName         = azurerm_storage_container.documents.name
-      }
-      secrets = {
-        create        = true
-        databaseUrl   = "postgresql+psycopg://${var.postgres_admin_login}:${var.postgres_admin_password}@${module.postgres.fqdn}:5432/${module.postgres.database_name}?sslmode=require"
-        devAuthSecret = "disabled-in-production"
       }
     }),
   ]
 
   depends_on = [
-    kubernetes_namespace.application,
-    helm_release.kgateway,
-    azurerm_federated_identity_credential.workload,
-    azurerm_role_assignment.storage_blob_contributor,
-    azurerm_role_assignment.docint_user,
-    azurerm_role_assignment.foundry_user,
-    terraform_data.gateway_origin_tls_secret,
-    terraform_data.build_identity_image,
-    terraform_data.build_finance_image,
-    terraform_data.build_documents_image,
-    terraform_data.build_frontend_image,
+    terraform_data.aks_get_credentials,
+    module.aks_cluster,
   ]
 }
 
 resource "time_sleep" "wait_for_gateway_service" {
-  depends_on      = [helm_release.application]
+  depends_on      = [terraform_data.bootstrap_gateway]
   create_duration = "90s"
 }
 
@@ -659,135 +590,16 @@ data "kubernetes_service" "gateway" {
   depends_on = [time_sleep.wait_for_gateway_service]
 }
 
-resource "azurerm_cdn_frontdoor_origin_group" "this" {
-  name                     = "${local.name}-og"
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this.id
-  session_affinity_enabled = false
-
-  health_probe {
-    interval_in_seconds = 30
-    path                = "/health"
-    protocol            = var.frontdoor_origin_use_https ? "Https" : "Http"
-    request_type        = "GET"
-  }
-
-  load_balancing {
-    additional_latency_in_milliseconds = 0
-    sample_size                        = 4
-    successful_samples_required        = 3
-  }
+resource "time_sleep" "wait_for_argocd_service" {
+  depends_on      = [helm_release.argocd]
+  create_duration = "90s"
 }
 
-resource "azurerm_cdn_frontdoor_origin" "kgateway" {
-  name                           = "${local.name}-kgw"
-  cdn_frontdoor_origin_group_id  = azurerm_cdn_frontdoor_origin_group.this.id
-  enabled                        = true
-  host_name                      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname)
-  http_port                      = 80
-  https_port                     = 443
-  origin_host_header             = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname)
-  priority                       = 1
-  weight                         = 1000
-  certificate_name_check_enabled = false
-
-  depends_on = [data.kubernetes_service.gateway]
-}
-
-resource "azurerm_cdn_frontdoor_firewall_policy" "this" {
-  name                = "${local.alnum_name}waf"
-  resource_group_name = module.resource_group.name
-  sku_name            = var.frontdoor_sku_name
-  enabled             = true
-  mode                = "Prevention"
-
-  managed_rule {
-    type    = "DefaultRuleSet"
-    version = "1.0"
-    action  = "Block"
+data "kubernetes_service_v1" "argocd_server" {
+  metadata {
+    name      = local.argocd_server_service_name
+    namespace = var.argocd_namespace
   }
 
-  managed_rule {
-    type    = "Microsoft_BotManagerRuleSet"
-    version = "1.0"
-    action  = "Block"
-  }
-
-  custom_rule {
-    name                           = "AuthRateLimit"
-    enabled                        = true
-    priority                       = 1
-    type                           = "RateLimitRule"
-    action                         = "Block"
-    rate_limit_duration_in_minutes = var.frontdoor_auth_rate_limit_duration_minutes
-    rate_limit_threshold           = var.frontdoor_auth_rate_limit_threshold
-
-    match_condition {
-      match_variable = "RequestUri"
-      operator       = "BeginsWith"
-      match_values   = ["/api/auth"]
-    }
-  }
-
-  tags = local.tags
-}
-
-resource "azurerm_cdn_frontdoor_route" "this" {
-  name                          = "${local.name}-route"
-  cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.this.id
-  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this.id
-  cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.kgateway.id]
-  cdn_frontdoor_custom_domain_ids = local.frontdoor_apex_custom_domain_id != "" ? [
-    local.frontdoor_apex_custom_domain_id,
-  ] : []
-  enabled                = true
-  forwarding_protocol    = var.frontdoor_origin_use_https ? "HttpsOnly" : "HttpOnly"
-  https_redirect_enabled = true
-  patterns_to_match      = ["/*"]
-  supported_protocols    = ["Http", "Https"]
-  link_to_default_domain = true
-}
-
-resource "azurerm_cdn_frontdoor_route" "www" {
-  count = local.frontdoor_www_custom_domain_id != "" ? 1 : 0
-
-  name                          = "${local.name}-www-route"
-  cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.this.id
-  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this.id
-  cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.kgateway.id]
-  cdn_frontdoor_custom_domain_ids = [
-    local.frontdoor_www_custom_domain_id,
-  ]
-  enabled                = true
-  forwarding_protocol    = var.frontdoor_origin_use_https ? "HttpsOnly" : "HttpOnly"
-  https_redirect_enabled = true
-  patterns_to_match      = ["/*"]
-  supported_protocols    = ["Http", "Https"]
-  link_to_default_domain = false
-}
-
-resource "azurerm_cdn_frontdoor_security_policy" "this" {
-  name                     = "${local.name}-security"
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this.id
-
-  security_policies {
-    firewall {
-      cdn_frontdoor_firewall_policy_id = azurerm_cdn_frontdoor_firewall_policy.this.id
-
-      association {
-        domain {
-          cdn_frontdoor_domain_id = azurerm_cdn_frontdoor_endpoint.this.id
-        }
-
-        dynamic "domain" {
-          for_each = local.frontdoor_custom_domain_ids
-
-          content {
-            cdn_frontdoor_domain_id = domain.value
-          }
-        }
-
-        patterns_to_match = ["/*"]
-      }
-    }
-  }
+  depends_on = [time_sleep.wait_for_argocd_service]
 }

@@ -5,6 +5,7 @@ Current scaffold status:
 - resource group root created
 - remote-state wiring added for `dev.tfstate` and `staging.tfstate`
 - origin contract outputs can now be consumed when `read_dev_state` and/or `read_staging_state` are enabled
+- shared non-prod Front Door can now be provisioned here and will attach dev/staging origins only when those origin contracts are usable
 
 Target ownership:
 

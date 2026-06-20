@@ -14,16 +14,36 @@ output "acr_login_server" {
   value = module.container_registry.login_server
 }
 
+output "shared_acr_login_server" {
+  value = data.azurerm_container_registry.global_shared.login_server
+}
+
 output "postgres_fqdn" {
   value = module.postgres.fqdn
 }
 
-output "frontdoor_endpoint_hostname" {
-  value = azurerm_cdn_frontdoor_endpoint.this.host_name
+output "postgres_dr_replica_enabled" {
+  value = var.postgres_dr_replica_enabled
+}
+
+output "postgres_dr_replica_location" {
+  value = var.postgres_dr_replica_enabled ? azurerm_postgresql_flexible_server.postgres_dr_replica[0].location : null
+}
+
+output "postgres_dr_replica_server_name" {
+  value = var.postgres_dr_replica_enabled ? azurerm_postgresql_flexible_server.postgres_dr_replica[0].name : null
+}
+
+output "postgres_dr_replica_fqdn" {
+  value = var.postgres_dr_replica_enabled ? azurerm_postgresql_flexible_server.postgres_dr_replica[0].fqdn : null
+}
+
+output "postgres_dr_replica_private_dns_zone_name" {
+  value = var.postgres_dr_replica_enabled ? azurerm_private_dns_zone.postgres_dr[0].name : null
 }
 
 output "frontend_login_url" {
-  value = "https://${azurerm_cdn_frontdoor_endpoint.this.host_name}/login"
+  value = trimspace(var.public_host_name) != "" ? "https://${trimspace(var.public_host_name)}/login" : null
 }
 
 output "backend_api_audience" {
@@ -43,11 +63,27 @@ output "backend_client_id" {
 }
 
 output "entra_admin_consent_url_template" {
-  value = "https://login.microsoftonline.com/<tenant-id-or-domain>/v2.0/adminconsent?client_id=${azuread_application.frontend_spa.client_id}&scope=${urlencode("${local.backend_audience}/.default")}&redirect_uri=${urlencode("https://${azurerm_cdn_frontdoor_endpoint.this.host_name}/login")}"
+  value = "https://login.microsoftonline.com/<tenant-id-or-domain>/v2.0/adminconsent?client_id=${azuread_application.frontend_spa.client_id}&scope=${urlencode("${local.backend_audience}/.default")}&redirect_uri=${urlencode("https://${trimspace(var.public_host_name)}/login")}"
 }
 
 output "workload_identity_client_id" {
   value = azurerm_user_assigned_identity.workload.client_id
+}
+
+output "key_vault_name" {
+  value = azurerm_key_vault.workload.name
+}
+
+output "key_vault_uri" {
+  value = azurerm_key_vault.workload.vault_uri
+}
+
+output "key_vault_database_url_secret_name" {
+  value = var.key_vault_database_url_secret_name
+}
+
+output "key_vault_dev_auth_secret_name" {
+  value = var.key_vault_dev_auth_secret_name
 }
 
 output "storage_account_url" {
@@ -55,11 +91,15 @@ output "storage_account_url" {
 }
 
 output "document_intelligence_endpoint" {
-  value = azurerm_cognitive_account.document_intelligence.endpoint
+  value = data.terraform_remote_state.nonprod_shared.outputs.shared_document_intelligence_endpoint
 }
 
 output "foundry_endpoint" {
-  value = azurerm_cognitive_account.foundry.endpoint
+  value = data.terraform_remote_state.nonprod_shared.outputs.shared_foundry_endpoint
+}
+
+output "shared_ai_contract" {
+  value = data.terraform_remote_state.nonprod_shared.outputs.shared_ai_contract
 }
 
 output "github_actions_client_id" {
@@ -74,12 +114,35 @@ output "github_actions_subscription_id" {
   value = data.azurerm_client_config.current.subscription_id
 }
 
+output "argocd_server_service_type" {
+  value = var.argocd_server_service_type
+}
+
+output "argocd_server_public_ip" {
+  value = try(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].ip, null)
+}
+
+output "argocd_server_public_hostname" {
+  value = try(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].hostname, null)
+}
+
+output "argocd_server_url" {
+  value = trimspace(try(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].hostname, "")) != "" ? "https://${trimspace(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].hostname)}" : try(
+    trimspace(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].ip) != "" ? "https://${trimspace(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].ip)}" : null,
+    null,
+  )
+}
+
 output "gateway_public_ip" {
   value = try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, null)
 }
 
 output "gateway_public_hostname" {
   value = try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null)
+}
+
+output "public_host_name" {
+  value = var.public_host_name
 }
 
 output "frontdoor_origin_contract" {
@@ -95,7 +158,7 @@ output "frontdoor_origin_contract" {
     https_port           = 443
     origin_protocol      = var.frontdoor_origin_use_https ? "Https" : "Http"
     forwarding_protocol  = var.frontdoor_origin_use_https ? "HttpsOnly" : "HttpOnly"
-    frontend_hostnames   = []
+    frontend_hostnames   = [var.public_host_name]
     api_path_prefixes    = ["/api/auth", "/api/admin", "/api/finance", "/api/documents", "/api/ai", "/health", "/ready"]
     frontend_path_prefix = "/*"
   }

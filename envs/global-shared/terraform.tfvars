@@ -2,6 +2,7 @@ prefix                     = "spendpilot"
 environment                = "global"
 location                   = "Central India"
 resource_group_name        = "rg-spendpilot-global"
+root_domain_name           = "costpilot.online"
 acr_name                   = "spendpilotglobalacr"
 acr_sku                    = "Standard"
 acr_anonymous_pull_enabled = false

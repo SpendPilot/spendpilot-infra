@@ -25,7 +25,7 @@ variable "resource_group_name" {
 variable "root_domain_name" {
   description = "Root public DNS domain hosted in Azure DNS."
   type        = string
-  default     = "myfinagent.online"
+  default     = "costpilot.online"
 }
 
 variable "acr_name" {

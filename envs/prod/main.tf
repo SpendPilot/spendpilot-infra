@@ -97,6 +97,63 @@ module "postgres" {
   tags                         = local.tags
 }
 
+module "postgres_dr_network" {
+  count  = var.postgres_dr_replica_enabled ? 1 : 0
+  source = "../../modules/network"
+
+  name                = "${local.name}-dr-vnet"
+  location            = var.postgres_dr_location
+  resource_group_name = module.resource_group.name
+  address_space       = [var.postgres_dr_vnet_cidr]
+  tags                = local.tags
+
+  subnets = {
+    "db-subnet" = {
+      address_prefixes   = [var.postgres_dr_db_subnet_cidr]
+      service_endpoints  = ["Microsoft.Storage"]
+      delegation_name    = "postgres-flex"
+      delegation_service = "Microsoft.DBforPostgreSQL/flexibleServers"
+    }
+  }
+}
+
+resource "azurerm_private_dns_zone" "postgres_dr" {
+  count = var.postgres_dr_replica_enabled ? 1 : 0
+
+  name                = "${local.name}-dr.postgres.database.azure.com"
+  resource_group_name = module.resource_group.name
+  tags                = local.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "postgres_dr" {
+  count = var.postgres_dr_replica_enabled ? 1 : 0
+
+  name                  = "${local.name}-dr-vnet-link"
+  private_dns_zone_name = azurerm_private_dns_zone.postgres_dr[0].name
+  resource_group_name   = module.resource_group.name
+  virtual_network_id    = module.postgres_dr_network[0].virtual_network_id
+  tags                  = local.tags
+}
+
+resource "azurerm_postgresql_flexible_server" "postgres_dr_replica" {
+  count = var.postgres_dr_replica_enabled ? 1 : 0
+
+  name                          = trimspace(var.postgres_dr_replica_server_name) != "" ? trimspace(var.postgres_dr_replica_server_name) : "${var.postgres_server_name}-dr"
+  resource_group_name           = module.resource_group.name
+  location                      = var.postgres_dr_location
+  create_mode                   = "Replica"
+  source_server_id              = module.postgres.server_id
+  delegated_subnet_id           = module.postgres_dr_network[0].subnet_ids["db-subnet"]
+  private_dns_zone_id           = azurerm_private_dns_zone.postgres_dr[0].id
+  public_network_access_enabled = false
+  zone                          = var.postgres_dr_zone
+  tags = merge(local.tags, {
+    role = "postgres-dr-replica"
+  })
+
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.postgres_dr]
+}
+
 module "aks_cluster" {
   source = "../../modules/aks-cluster"
 
