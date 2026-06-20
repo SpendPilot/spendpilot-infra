@@ -63,9 +63,6 @@ module "network" {
     "aks-subnet" = {
       address_prefixes = [var.aks_subnet_cidr]
     }
-    "appgw-subnet" = {
-      address_prefixes = [var.app_gateway_subnet_cidr]
-    }
     "db-subnet" = {
       address_prefixes   = [var.db_subnet_cidr]
       service_endpoints  = ["Microsoft.Storage"]
@@ -184,28 +181,6 @@ module "aks_cluster" {
   depends_on = [azurerm_log_analytics_solution.container_insights]
 }
 
-module "app_gateway_edge" {
-  count  = var.app_gateway_enabled ? 1 : 0
-  source = "../../modules/app-gateway-aks-edge"
-
-  name                 = "${local.name}-appgw"
-  resource_group_name  = module.resource_group.name
-  location             = module.resource_group.location
-  subnet_id            = module.network.subnet_ids["appgw-subnet"]
-  min_capacity         = var.app_gateway_min_capacity
-  max_capacity         = var.app_gateway_max_capacity
-  backend_ip_addresses = var.app_gateway_backend_ip_addresses
-  backend_port         = var.app_gateway_backend_port
-  probe_path           = "/health"
-  listener_host_name   = var.app_gateway_listener_host_name
-  identity_ids = var.app_gateway_tls_enabled ? [
-    azurerm_user_assigned_identity.app_gateway[0].id,
-  ] : []
-  tls_certificate_secret_id = var.app_gateway_tls_enabled ? azurerm_key_vault_certificate.app_gateway_tls[0].versionless_secret_id : ""
-  tls_host_name             = var.app_gateway_tls_enabled ? var.app_gateway_tls_host_name : ""
-  tags                      = local.tags
-}
-
 resource "azurerm_role_assignment" "acr_pull" {
   scope                = data.azurerm_container_registry.global_shared.id
   role_definition_name = "AcrPull"
@@ -214,15 +189,6 @@ resource "azurerm_role_assignment" "acr_pull" {
 
 resource "azurerm_user_assigned_identity" "workload" {
   name                = "${local.name}-uami"
-  location            = module.resource_group.location
-  resource_group_name = module.resource_group.name
-  tags                = local.tags
-}
-
-resource "azurerm_user_assigned_identity" "app_gateway" {
-  count = var.app_gateway_enabled && var.app_gateway_tls_enabled ? 1 : 0
-
-  name                = "${local.name}-appgw-uami"
   location            = module.resource_group.location
   resource_group_name = module.resource_group.name
   tags                = local.tags
@@ -239,62 +205,6 @@ resource "azurerm_key_vault" "workload" {
   purge_protection_enabled      = true
   soft_delete_retention_days    = 90
   tags                          = local.tags
-}
-
-resource "azurerm_key_vault_certificate" "app_gateway_tls" {
-  count = var.app_gateway_enabled && var.app_gateway_tls_enabled ? 1 : 0
-
-  name         = replace(var.app_gateway_tls_host_name, ".", "-")
-  key_vault_id = azurerm_key_vault.workload.id
-
-  certificate_policy {
-    issuer_parameters {
-      name = "Self"
-    }
-
-    key_properties {
-      exportable = true
-      key_size   = 2048
-      key_type   = "RSA"
-      reuse_key  = false
-    }
-
-    lifetime_action {
-      action {
-        action_type = "AutoRenew"
-      }
-
-      trigger {
-        days_before_expiry = 30
-      }
-    }
-
-    secret_properties {
-      content_type = "application/x-pkcs12"
-    }
-
-    x509_certificate_properties {
-      extended_key_usage = [
-        "1.3.6.1.5.5.7.3.1",
-      ]
-      key_usage = [
-        "cRLSign",
-        "dataEncipherment",
-        "digitalSignature",
-        "keyAgreement",
-        "keyCertSign",
-        "keyEncipherment",
-      ]
-      subject            = "CN=${var.app_gateway_tls_host_name}"
-      validity_in_months = 12
-
-      subject_alternative_names {
-        dns_names = [var.app_gateway_tls_host_name]
-      }
-    }
-  }
-
-  depends_on = [time_sleep.wait_for_key_vault_rbac]
 }
 
 resource "azurerm_federated_identity_credential" "workload" {
@@ -428,23 +338,9 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
   principal_id         = azurerm_user_assigned_identity.workload.principal_id
 }
 
-resource "azurerm_role_assignment" "key_vault_secrets_user_app_gateway" {
-  count = var.app_gateway_enabled && var.app_gateway_tls_enabled ? 1 : 0
-
-  scope                = azurerm_key_vault.workload.id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_user_assigned_identity.app_gateway[0].principal_id
-}
-
 resource "azurerm_role_assignment" "key_vault_secrets_officer_current_user" {
   scope                = azurerm_key_vault.workload.id
   role_definition_name = "Key Vault Secrets Officer"
-  principal_id         = data.azurerm_client_config.current.object_id
-}
-
-resource "azurerm_role_assignment" "key_vault_certificates_officer_current_user" {
-  scope                = azurerm_key_vault.workload.id
-  role_definition_name = "Key Vault Certificates Officer"
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
@@ -453,9 +349,7 @@ resource "time_sleep" "wait_for_key_vault_rbac" {
 
   depends_on = [
     azurerm_role_assignment.key_vault_secrets_user,
-    azurerm_role_assignment.key_vault_secrets_user_app_gateway,
     azurerm_role_assignment.key_vault_secrets_officer_current_user,
-    azurerm_role_assignment.key_vault_certificates_officer_current_user,
   ]
 }
 

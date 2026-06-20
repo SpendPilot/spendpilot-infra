@@ -8,7 +8,7 @@ This Terraform root now bootstraps the production platform foundation:
 - kGateway CRDs and kGateway control plane
 - Argo CD installed into `argocd`
 - Argo CD server exposed through a Kubernetes `LoadBalancer` service by default
-- Azure Front Door can be enabled here for the `costpilot.online` target edge while the working Application Gateway path remains available as rollback
+- Azure Front Door owns the intended public edge for `costpilot.online`
 
 Important behavior:
 
@@ -28,5 +28,4 @@ Useful outputs after apply:
 - `gitops_values_contract`
 - `frontdoor_apex_validation`
 - `frontdoor_origin_target`
-- `app_gateway_fallback_contract`
 - `prod_edge_transition_contract`

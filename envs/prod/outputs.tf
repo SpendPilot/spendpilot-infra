@@ -182,33 +182,13 @@ output "frontdoor_origin_target" {
   }
 }
 
-output "app_gateway_name" {
-  value = var.app_gateway_enabled && length(module.app_gateway_edge) > 0 ? module.app_gateway_edge[0].name : null
-}
-
-output "app_gateway_public_ip" {
-  value = var.app_gateway_enabled && length(module.app_gateway_edge) > 0 ? module.app_gateway_edge[0].public_ip_address : null
-}
-
-output "app_gateway_fallback_contract" {
-  value = var.app_gateway_enabled && length(module.app_gateway_edge) > 0 ? {
-    temporary_public_ip   = module.app_gateway_edge[0].public_ip_address
-    backend_target_ips    = var.app_gateway_backend_ip_addresses
-    tls_host_name         = var.app_gateway_tls_host_name
-    listener_host_name    = var.app_gateway_listener_host_name
-    rollback_path_summary = "Keep Application Gateway available as the temporary rollback path while Front Door onboarding and DNS validation complete."
-  } : null
-}
-
 output "prod_edge_transition_contract" {
   value = {
     target_public_hostname      = local.frontdoor_apex_host_name
     frontdoor_enabled           = local.frontdoor_enabled
     frontdoor_endpoint_hostname = local.frontdoor_enabled && length(azurerm_cdn_frontdoor_endpoint.this) > 0 ? azurerm_cdn_frontdoor_endpoint.this[0].host_name : null
-    app_gateway_fallback_host   = var.app_gateway_tls_host_name
-    app_gateway_fallback_ip     = var.app_gateway_enabled && length(module.app_gateway_edge) > 0 ? module.app_gateway_edge[0].public_ip_address : null
     dns_cutover_required        = true
-    rollback_strategy           = "Leave Application Gateway in place until Front Door custom domain validation, certificate issuance, and runtime checks succeed."
+    rollback_strategy           = "Revert the Front Door-focused Terraform change set and restore DNS to the last known good public edge if runtime validation fails."
   }
 }
 
