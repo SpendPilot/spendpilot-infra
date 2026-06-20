@@ -732,15 +732,16 @@ resource "azurerm_cdn_frontdoor_origin" "kgateway" {
   name                          = "${local.name}-kgw"
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this[0].id
   enabled                       = true
-  host_name = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(
-    data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname,
-    data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip,
+  host_name = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (
+    trimspace(try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, "")) != "" ? trimspace(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname) : trimspace(try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, ""))
   )
   http_port  = 80
   https_port = 443
-  origin_host_header = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(
-    data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname,
-    data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip,
+  origin_host_header = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : (
+    trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(
+      data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname,
+      data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip,
+    )
   )
   priority                       = 1
   weight                         = 1000

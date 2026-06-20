@@ -22,7 +22,7 @@ output "frontdoor_origin_contract" {
   value = {
     environment          = var.environment
     origin_hostname      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (trimspace(var.gateway_public_hostname) != "" ? trimspace(var.gateway_public_hostname) : (trimspace(var.gateway_public_ip) != "" ? trimspace(var.gateway_public_ip) : null))
-    origin_host_header   = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (trimspace(var.gateway_public_hostname) != "" ? trimspace(var.gateway_public_hostname) : (trimspace(var.gateway_public_ip) != "" ? trimspace(var.gateway_public_ip) : null))
+    origin_host_header   = trimspace(var.public_host_name) != "" ? trimspace(var.public_host_name) : (trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (trimspace(var.gateway_public_hostname) != "" ? trimspace(var.gateway_public_hostname) : (trimspace(var.gateway_public_ip) != "" ? trimspace(var.gateway_public_ip) : null)))
     gateway_public_ip    = trimspace(var.gateway_public_ip) != "" ? trimspace(var.gateway_public_ip) : null
     gateway_public_fqdn  = trimspace(var.gateway_public_hostname) != "" ? trimspace(var.gateway_public_hostname) : null
     health_probe_path    = "/health"

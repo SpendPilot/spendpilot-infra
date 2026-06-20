@@ -84,7 +84,7 @@ documents_storage_account_name = "sp2300proddocs"
 # Front Door
 frontdoor_enabled                  = true
 frontdoor_origin_use_https         = false
-frontdoor_origin_hostname_override = "4.247.241.143"
+frontdoor_origin_hostname_override = ""
 frontdoor_apex_host_name           = "costpilot.online"
 frontdoor_www_host_name            = ""
 

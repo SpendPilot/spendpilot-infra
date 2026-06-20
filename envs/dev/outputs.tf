@@ -150,7 +150,7 @@ output "frontdoor_origin_contract" {
     environment          = var.environment
     namespace            = var.namespace
     origin_hostname      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null)
-    origin_host_header   = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null)
+    origin_host_header   = trimspace(var.public_host_name) != "" ? trimspace(var.public_host_name) : (trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null))
     gateway_public_ip    = try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].ip, null)
     gateway_public_fqdn  = try(data.kubernetes_service.gateway.status[0].load_balancer[0].ingress[0].hostname, null)
     health_probe_path    = "/health"

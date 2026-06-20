@@ -200,10 +200,10 @@ output "frontdoor_origin_contract" {
   value = {
     environment          = var.environment
     namespace            = var.namespace
-    origin_hostname      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null)
-    origin_host_header   = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null)
-    gateway_public_ip    = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null)
-    gateway_public_fqdn  = try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, null)
+    origin_hostname      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (trimspace(try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, "")) != "" ? trimspace(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname) : try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null))
+    origin_host_header   = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : (trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null))
+    gateway_public_ip    = try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null)
+    gateway_public_fqdn  = trimspace(try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, "")) != "" ? trimspace(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname) : null
     health_probe_path    = "/health"
     http_port            = 80
     https_port           = 443
