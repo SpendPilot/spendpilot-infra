@@ -33,10 +33,29 @@ module "container_registry" {
 # Azure DNS becomes authoritative only after the Hostinger nameservers
 # are delegated to the Azure DNS nameservers created for this zone.
 # This shared DNS zone must outlive environment-specific infrastructure.
-resource "azurerm_dns_zone" "public" {
+moved {
+  from = azurerm_dns_zone.public
+  to   = azurerm_dns_zone.legacy[0]
+}
+
+resource "azurerm_dns_zone" "primary" {
   name                = var.root_domain_name
   resource_group_name = module.resource_group.name
   tags                = local.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "azurerm_dns_zone" "legacy" {
+  count = var.manage_legacy_root_domain ? 1 : 0
+
+  name                = var.legacy_root_domain_name
+  resource_group_name = module.resource_group.name
+  tags = merge(local.tags, {
+    domain_role = "legacy"
+  })
 
   lifecycle {
     prevent_destroy = true

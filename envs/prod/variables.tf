@@ -329,9 +329,9 @@ variable "postgres_dr_db_subnet_cidr" {
 }
 
 variable "postgres_dr_zone" {
-  description = "Availability zone used for the PostgreSQL disaster recovery replica."
+  description = "Optional availability zone used for the PostgreSQL disaster recovery replica. Leave empty when the target region does not expose zonal placement for the selected SKU."
   type        = string
-  default     = "1"
+  default     = ""
 }
 
 variable "postgres_dr_replica_server_name" {

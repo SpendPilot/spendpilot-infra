@@ -15,11 +15,11 @@ output "acr_login_server" {
 }
 
 output "dns_zone_name" {
-  value = azurerm_dns_zone.public.name
+  value = azurerm_dns_zone.primary.name
 }
 
 output "dns_zone_id" {
-  value = azurerm_dns_zone.public.id
+  value = azurerm_dns_zone.primary.id
 }
 
 output "dns_zone_resource_group_name" {
@@ -27,9 +27,21 @@ output "dns_zone_resource_group_name" {
 }
 
 output "dns_zone_name_servers" {
-  value = azurerm_dns_zone.public.name_servers
+  value = azurerm_dns_zone.primary.name_servers
 }
 
 output "root_domain_name" {
-  value = azurerm_dns_zone.public.name
+  value = azurerm_dns_zone.primary.name
+}
+
+output "legacy_dns_zone_name" {
+  value = var.manage_legacy_root_domain && length(azurerm_dns_zone.legacy) > 0 ? azurerm_dns_zone.legacy[0].name : null
+}
+
+output "legacy_dns_zone_id" {
+  value = var.manage_legacy_root_domain && length(azurerm_dns_zone.legacy) > 0 ? azurerm_dns_zone.legacy[0].id : null
+}
+
+output "legacy_dns_zone_name_servers" {
+  value = var.manage_legacy_root_domain && length(azurerm_dns_zone.legacy) > 0 ? azurerm_dns_zone.legacy[0].name_servers : null
 }

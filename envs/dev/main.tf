@@ -123,6 +123,24 @@ module "postgres_dr_network" {
   }
 }
 
+resource "azurerm_virtual_network_peering" "postgres_dr_from_primary" {
+  count = var.postgres_dr_replica_enabled ? 1 : 0
+
+  name                      = "${local.name}-to-dr"
+  resource_group_name       = module.resource_group.name
+  virtual_network_name      = module.network.virtual_network_name
+  remote_virtual_network_id = module.postgres_dr_network[0].virtual_network_id
+}
+
+resource "azurerm_virtual_network_peering" "postgres_dr_to_primary" {
+  count = var.postgres_dr_replica_enabled ? 1 : 0
+
+  name                      = "${local.name}-dr-to-primary"
+  resource_group_name       = module.resource_group.name
+  virtual_network_name      = module.postgres_dr_network[0].virtual_network_name
+  remote_virtual_network_id = module.network.virtual_network_id
+}
+
 resource "azurerm_private_dns_zone" "postgres_dr" {
   count = var.postgres_dr_replica_enabled ? 1 : 0
 
@@ -152,12 +170,16 @@ resource "azurerm_postgresql_flexible_server" "postgres_dr_replica" {
   delegated_subnet_id           = module.postgres_dr_network[0].subnet_ids["db-subnet"]
   private_dns_zone_id           = azurerm_private_dns_zone.postgres_dr[0].id
   public_network_access_enabled = false
-  zone                          = var.postgres_dr_zone
+  zone                          = trimspace(var.postgres_dr_zone) != "" ? trimspace(var.postgres_dr_zone) : null
   tags = merge(local.tags, {
     role = "postgres-dr-replica"
   })
 
-  depends_on = [azurerm_private_dns_zone_virtual_network_link.postgres_dr]
+  depends_on = [
+    azurerm_private_dns_zone_virtual_network_link.postgres_dr,
+    azurerm_virtual_network_peering.postgres_dr_from_primary,
+    azurerm_virtual_network_peering.postgres_dr_to_primary,
+  ]
 }
 
 module "aks_cluster" {
@@ -499,6 +521,12 @@ resource "helm_release" "kgateway" {
 resource "kubernetes_namespace" "application" {
   metadata {
     name = var.namespace
+  }
+
+  lifecycle {
+    ignore_changes = [
+      metadata[0].annotations["argocd.argoproj.io/tracking-id"],
+    ]
   }
 
   depends_on = [terraform_data.aks_get_credentials]

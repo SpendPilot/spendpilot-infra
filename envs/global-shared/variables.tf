@@ -23,9 +23,21 @@ variable "resource_group_name" {
 }
 
 variable "root_domain_name" {
-  description = "Root public DNS domain hosted in Azure DNS."
+  description = "Primary root public DNS domain hosted in Azure DNS."
   type        = string
   default     = "costpilot.online"
+}
+
+variable "legacy_root_domain_name" {
+  description = "Legacy root public DNS domain kept in Azure DNS for rollback or historical references."
+  type        = string
+  default     = "myfinagent.online"
+}
+
+variable "manage_legacy_root_domain" {
+  description = "Keep managing the legacy Azure DNS zone alongside the new primary root domain."
+  type        = bool
+  default     = true
 }
 
 variable "acr_name" {
