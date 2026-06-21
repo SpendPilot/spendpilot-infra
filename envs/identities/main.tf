@@ -1,5 +1,11 @@
 data "azuread_client_config" "current" {}
 
+data "azuread_application_published_app_ids" "well_known" {}
+
+data "azuread_service_principal" "microsoft_graph" {
+  client_id = data.azuread_application_published_app_ids.well_known.result["MicrosoftGraph"]
+}
+
 data "terraform_remote_state" "global_shared" {
   backend = "azurerm"
 
@@ -37,6 +43,10 @@ resource "azuread_application" "github_actions" {
   owners = [
     data.azuread_client_config.current.object_id
   ]
+
+  lifecycle {
+    ignore_changes = [owners, required_resource_access]
+  }
 }
 # Enterprise application / service principal belonging to the app registration.
 #
@@ -47,6 +57,23 @@ resource "azuread_service_principal" "github_actions" {
   owners = [
     data.azuread_client_config.current.object_id
   ]
+}
+
+resource "azuread_application_api_access" "github_actions_microsoft_graph" {
+  application_id = azuread_application.github_actions.id
+  api_client_id  = data.azuread_application_published_app_ids.well_known.result["MicrosoftGraph"]
+
+  role_ids = [
+    data.azuread_service_principal.microsoft_graph.app_role_ids["Application.ReadWrite.All"],
+  ]
+}
+
+resource "azuread_app_role_assignment" "github_actions_microsoft_graph_application_read_write_all" {
+  app_role_id         = data.azuread_service_principal.microsoft_graph.app_role_ids["Application.ReadWrite.All"]
+  principal_object_id = azuread_service_principal.github_actions.object_id
+  resource_object_id  = data.azuread_service_principal.microsoft_graph.object_id
+
+  depends_on = [azuread_application_api_access.github_actions_microsoft_graph]
 }
 # Creates multiple federated credentials under the same application.
 #

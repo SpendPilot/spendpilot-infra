@@ -1,28 +1,6 @@
-prefix                      = "spctl"
-environment                 = "prod"
-location                    = "Central India"
-resource_group_name         = "spctl-prod-rg"
-aks_node_resource_group_name = "spctl-prod-aks-nodes-rg"
-postgres_admin_login        = "spendcontroladmin"
-postgres_admin_password     = "ReplaceWithStrongPassword!"
-postgres_sku_name          = "GP_Standard_D2s_v3"
-postgres_ha_mode           = "ZoneRedundant"
-postgres_ha_standby_zone   = "2"
-postgres_geo_redundant_backup_enabled = true
-postgres_dr_replica_enabled = true
-postgres_dr_location        = "South India"
-postgres_dr_vnet_cidr       = "10.42.0.0/16"
-postgres_dr_db_subnet_cidr  = "10.42.20.0/24"
-frontdoor_origin_use_https = false
-frontdoor_origin_hostname_override = ""
-frontdoor_apex_custom_domain_id = ""
-frontdoor_www_custom_domain_id = ""
-image_tag                   = "latest"
-foundry_location            = "East US 2"
-platform_admin_emails       = "owner@example.com"
-allowed_tenant_ids          = ""
+// Non-secret settings now live in variables.tf defaults.
+// Keep real secret values out of git and inject them with:
+// - TF_VAR_postgres_admin_password, or
+// - Azure Key Vault fetched during CI.
 
-tags = {
-  owner   = "platform-team"
-  project = "spend-control"
-}
+postgres_admin_password = "ReplaceWithStrongPassword!"

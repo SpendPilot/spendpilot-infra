@@ -1,29 +1,6 @@
-resource_group_name          = "rg-spendpilot-prod"
-aks_node_resource_group_name = "rg-spendpilot-prod-aks-nodes"
+// Non-secret settings now live in variables.tf defaults.
+// Keep real secret values out of git and inject them with:
+// - TF_VAR_postgres_admin_password, or
+// - Azure Key Vault fetched during CI.
 
-# Required secret value.
 postgres_admin_password = "replace-me"
-
-# Stable runtime object names consumed by the prod chart.
-app_config_map_name = "spend-control-config"
-app_secret_name     = "spend-control-secrets"
-key_vault_name      = ""
-
-# Runtime config injected by Terraform into the in-cluster ConfigMap/Secret.
-auth_authority         = "https://login.microsoftonline.com/common"
-backend_cors_origins   = "https://example.z01.azurefd.net"
-frontend_api_base_url  = "/api"
-finance_default_currency = "INR"
-dev_auth_secret        = "disabled-in-production"
-
-# Optional hardening for public AKS API access.
-authorized_ip_ranges = []
-
-# Shared ACR from global-shared.
-# Shared ACR now comes from the global-shared Terraform state.
-#
-# Change the ACR name in envs/global-shared/terraform.tfvars, apply global-shared,
-# then apply prod. prod will resolve the registry from remote state automatically.
-
-# Argo CD server exposure.
-argocd_server_service_type = "LoadBalancer"

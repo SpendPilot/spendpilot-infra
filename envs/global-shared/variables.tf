@@ -43,7 +43,7 @@ variable "manage_legacy_root_domain" {
 variable "acr_name" {
   description = "Optional explicit ACR name override."
   type        = string
-  default     = ""
+  default     = "spendpilotglobalacr"
 }
 
 variable "acr_sku" {
@@ -61,11 +61,13 @@ variable "acr_anonymous_pull_enabled" {
 variable "create_acr" {
   description = "Create the shared ACR from this root."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "tags" {
   description = "Additional Azure tags."
   type        = map(string)
-  default     = {}
+  default = {
+    env = "global"
+  }
 }

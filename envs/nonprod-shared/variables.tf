@@ -43,7 +43,11 @@ variable "staging_public_host_name" {
 variable "tags" {
   description = "Additional Azure tags."
   type        = map(string)
-  default     = {}
+  default = {
+    env         = "nonprod-shared"
+    application = "spendpilot"
+    managed_by  = "terraform"
+  }
 }
 
 variable "backend_resource_group_name" {
@@ -67,7 +71,7 @@ variable "backend_container_name" {
 variable "dev_state_key" {
   description = "Remote state key for the dev environment."
   type        = string
-  default     = "dev.tfstate"
+  default     = "spendpilot.tfstate"
 }
 
 variable "staging_state_key" {
@@ -79,7 +83,7 @@ variable "staging_state_key" {
 variable "read_dev_state" {
   description = "Whether nonprod-shared should read the dev env state."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "read_staging_state" {
@@ -121,13 +125,13 @@ variable "document_intelligence_sku" {
 variable "document_intelligence_account_name" {
   description = "Optional explicit name for the shared non-prod Document Intelligence account."
   type        = string
-  default     = ""
+  default     = "spendpilot-nonprod-docint"
 }
 
 variable "document_intelligence_custom_subdomain_name" {
   description = "Optional explicit custom subdomain for the shared non-prod Document Intelligence account."
   type        = string
-  default     = ""
+  default     = "spendpilotnonproddoc"
 }
 
 variable "foundry_sku_name" {
@@ -139,13 +143,13 @@ variable "foundry_sku_name" {
 variable "foundry_account_name" {
   description = "Optional explicit name for the shared non-prod Azure AI Foundry/OpenAI account."
   type        = string
-  default     = ""
+  default     = "spendpilot-nonprod-foundry"
 }
 
 variable "foundry_custom_subdomain_name" {
   description = "Optional explicit custom subdomain for the shared non-prod Azure AI Foundry/OpenAI account."
   type        = string
-  default     = ""
+  default     = "spendpilotnonprodai"
 }
 
 variable "foundry_location" {

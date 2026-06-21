@@ -31,7 +31,11 @@ variable "aks_node_resource_group_name" {
 variable "tags" {
   description = "Additional Azure tags."
   type        = map(string)
-  default     = {}
+  default = {
+    env         = "prod"
+    application = "spendpilot"
+    managed_by  = "terraform"
+  }
 }
 
 variable "kubernetes_version" {
@@ -313,13 +317,13 @@ variable "postgres_database_name" {
 variable "postgres_server_name" {
   description = "Optional explicit PostgreSQL Flexible Server name override."
   type        = string
-  default     = "spendpilot-prod-pgsql"
+  default     = "spendpilot-prod-pgsql-2300"
 }
 
 variable "postgres_dr_replica_enabled" {
   description = "Whether to provision a cross-region PostgreSQL read replica for disaster recovery."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "postgres_dr_location" {
@@ -349,7 +353,7 @@ variable "postgres_dr_zone" {
 variable "postgres_dr_replica_server_name" {
   description = "Optional explicit name override for the PostgreSQL disaster recovery replica."
   type        = string
-  default     = ""
+  default     = "spendpilot-prod-pgsql-2300-dr"
 }
 
 variable "backend_resource_group_name" {
@@ -391,13 +395,13 @@ variable "document_intelligence_sku" {
 variable "document_intelligence_account_name" {
   description = "Optional explicit Document Intelligence account name override."
   type        = string
-  default     = "spendpilot-prod-docint"
+  default     = "spendpilot-prod-docint-2300"
 }
 
 variable "document_intelligence_custom_subdomain_name" {
   description = "Optional explicit Document Intelligence custom subdomain override."
   type        = string
-  default     = "spendpilotproddoc"
+  default     = "spendpilotproddoc2300"
 }
 
 variable "foundry_sku_name" {
@@ -409,13 +413,13 @@ variable "foundry_sku_name" {
 variable "foundry_account_name" {
   description = "Optional explicit Azure AI Foundry account name override."
   type        = string
-  default     = "spendpilot-prod-foundry"
+  default     = "spendpilot-prod-foundry-2300"
 }
 
 variable "foundry_custom_subdomain_name" {
   description = "Optional explicit Azure AI Foundry custom subdomain override."
   type        = string
-  default     = "spendpilotprodai"
+  default     = "spendpilotprodai2300"
 }
 
 variable "foundry_location" {
@@ -469,13 +473,13 @@ variable "auth_authority" {
 variable "backend_application_id_uri" {
   description = "Application ID URI exposed by the backend API app registration."
   type        = string
-  default     = "api://spendpilot-prod-backend-api"
+  default     = "api://spendpilot-prod-backend-api-2300"
 }
 
 variable "backend_cors_origins" {
   description = "Comma-separated CORS origins allowed to call the backend APIs."
   type        = string
-  default     = "https://example.z01.azurefd.net"
+  default     = "https://costpilot.online,https://myfinagent.online,https://www.myfinagent.online"
 }
 
 variable "finance_default_currency" {
@@ -493,7 +497,7 @@ variable "frontend_api_base_url" {
 variable "documents_storage_account_name" {
   description = "Optional explicit Azure Storage Account name override for documents."
   type        = string
-  default     = "spendpilotprodst"
+  default     = "sp2300proddocs"
 }
 
 variable "dev_auth_secret" {
@@ -518,7 +522,7 @@ variable "frontdoor_sku_name" {
 variable "frontdoor_enabled" {
   description = "Whether to provision Azure Front Door resources in prod."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "frontdoor_origin_use_https" {
@@ -548,7 +552,7 @@ variable "frontdoor_origin_hostname_override" {
 variable "frontdoor_apex_host_name" {
   description = "Optional apex domain to onboard on Front Door."
   type        = string
-  default     = ""
+  default     = "costpilot.online"
 }
 
 variable "frontdoor_www_host_name" {

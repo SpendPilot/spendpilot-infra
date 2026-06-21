@@ -61,7 +61,11 @@ variable "gateway_public_hostname" {
 variable "tags" {
   description = "Additional Azure tags."
   type        = map(string)
-  default     = {}
+  default = {
+    env         = "staging"
+    application = "spendpilot"
+    managed_by  = "terraform"
+  }
 }
 
 variable "backend_resource_group_name" {

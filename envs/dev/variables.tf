@@ -1,7 +1,7 @@
 variable "prefix" {
   description = "Short application prefix used in Azure resource names."
   type        = string
-  default     = "spctl"
+  default     = "spendpilot"
 }
 
 variable "environment" {
@@ -19,19 +19,22 @@ variable "location" {
 variable "resource_group_name" {
   description = "Primary Azure resource group name used for the platform stack."
   type        = string
-  default     = "spctl-prod-rg"
+  default     = "spendpilot-rg"
 }
 
 variable "aks_node_resource_group_name" {
   description = "Azure-managed AKS node resource group name."
   type        = string
-  default     = "spctl-prod-aks-nodes-rg"
+  default     = "spendpilot-aks-rg"
 }
 
 variable "tags" {
   description = "Additional Azure tags."
   type        = map(string)
-  default     = {}
+  default = {
+    owner   = "platform-team"
+    project = "spend-control"
+  }
 }
 
 variable "backend_resource_group_name" {
@@ -247,7 +250,7 @@ variable "system_node_min_count" {
 
 variable "system_node_max_count" {
   type    = number
-  default = 2
+  default = 1
 }
 
 variable "user_node_vm_size" {
@@ -257,18 +260,18 @@ variable "user_node_vm_size" {
 
 variable "user_node_min_count" {
   type    = number
-  default = 1
+  default = 0
 }
 
 variable "user_node_max_count" {
   type    = number
-  default = 3
+  default = 1
 }
 
 variable "postgres_admin_login" {
   description = "PostgreSQL administrator username."
   type        = string
-  default     = "spendcontroladmin"
+  default     = "spendpilot"
 }
 
 variable "postgres_admin_password" {
@@ -324,7 +327,7 @@ variable "postgres_database_name" {
 variable "postgres_dr_replica_enabled" {
   description = "Whether to provision a cross-region PostgreSQL read replica for disaster recovery."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "postgres_dr_location" {
@@ -354,7 +357,7 @@ variable "postgres_dr_zone" {
 variable "postgres_dr_replica_server_name" {
   description = "Optional explicit name override for the PostgreSQL disaster recovery replica."
   type        = string
-  default     = ""
+  default     = "spendpilot-dev-pgsql-dr"
 }
 
 variable "acr_sku" {
@@ -371,7 +374,7 @@ variable "image_tag" {
 variable "build_images_during_apply" {
   description = "When true, terraform apply will call az acr build for the frontend and backend images."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "frontdoor_sku_name" {
@@ -425,7 +428,7 @@ variable "public_host_name" {
 variable "platform_admin_emails" {
   description = "Comma-separated platform admin emails passed into the workload config."
   type        = string
-  default     = ""
+  default     = "lijazsalim@gmail.com"
 }
 
 variable "allowed_tenant_ids" {

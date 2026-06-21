@@ -7,5 +7,17 @@
 **/.terraform/modules/modules.json
 **/.terraform-provider-mirror-test/
 **/.terraform-provider-mirror-test/**/*.zip
+**/.generated-kubeconfig
+**/.terraform.lock.hcl.bak
 *.tfplan
 plan
+*.auto.tfvars
+*.auto.tfvars.json
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

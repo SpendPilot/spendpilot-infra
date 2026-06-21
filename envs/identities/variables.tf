@@ -2,6 +2,7 @@ variable "subscription_id" {
   description = "Azure subscription ID containing the SpendPilot global shared resources."
   type        = string
   nullable    = false
+  default     = "c00887fb-883e-4d8b-83ba-697054b43421"
 
   validation {
     condition     = can(regex("^[0-9a-fA-F-]{36}$", trimspace(var.subscription_id)))
@@ -13,6 +14,7 @@ variable "tenant_id" {
   description = "Microsoft Entra tenant ID where the GitHub Actions app registration will be created."
   type        = string
   nullable    = false
+  default     = "23009888-f985-4438-a6a8-32650f036be3"
 
   validation {
     condition     = can(regex("^[0-9a-fA-F-]{36}$", trimspace(var.tenant_id)))
@@ -81,6 +83,7 @@ variable "acr_abac_enabled" {
 
   type     = bool
   nullable = false
+  default  = false
 }
 
 variable "github_federated_credentials" {
@@ -97,6 +100,43 @@ variable "github_federated_credentials" {
     subject     = string
     description = optional(string)
   }))
+
+  default = {
+    frontend_main = {
+      subject     = "repo:SpendPilot/spendpilot-frontend:ref:refs/heads/main"
+      description = "Allows the SpendPilot frontend main branch to push frontend images."
+    }
+
+    services_main = {
+      subject     = "repo:SpendPilot/spendpilot-services:ref:refs/heads/main"
+      description = "Allows the SpendPilot services main branch to push backend service images."
+    }
+
+    helm_main = {
+      subject     = "repo:SpendPilot/spendpilot-helm:ref:refs/heads/main"
+      description = "Allows the SpendPilot Helm repository main branch to access Azure when required."
+    }
+
+    gitops_main = {
+      subject     = "repo:SpendPilot/spendpilot-gitops:ref:refs/heads/main"
+      description = "Allows the SpendPilot GitOps repository main branch to access Azure when required."
+    }
+
+    infra_main = {
+      subject     = "repo:SpendPilot/spendpilot-infra:ref:refs/heads/main"
+      description = "Allows non-deployment validation from the SpendPilot infra main branch."
+    }
+
+    infra_pull_request = {
+      subject     = "repo:SpendPilot/spendpilot-infra:pull_request"
+      description = "Allows speculative Terraform plans from SpendPilot infra pull requests."
+    }
+
+    docs_main = {
+      subject     = "repo:SpendPilot/spendpilot-docs:ref:refs/heads/main"
+      description = "Allows the SpendPilot docs main branch to access Azure when required."
+    }
+  }
 
   validation {
     condition = alltrue([
@@ -130,7 +170,27 @@ variable "additional_role_assignments" {
     role_definition_name = string
   }))
 
-  default = {}
+  default = {
+    terraform_subscription_owner = {
+      scope                = "/subscriptions/c00887fb-883e-4d8b-83ba-697054b43421"
+      role_definition_name = "Owner"
+    }
+
+    terraform_state_blob_owner = {
+      scope                = "/subscriptions/c00887fb-883e-4d8b-83ba-697054b43421/resourceGroups/terraform-rg/providers/Microsoft.Storage/storageAccounts/lijaztf"
+      role_definition_name = "Storage Blob Data Owner"
+    }
+
+    terraform_dev_key_vault_secrets_user = {
+      scope                = "/subscriptions/c00887fb-883e-4d8b-83ba-697054b43421/resourceGroups/spendpilot-rg/providers/Microsoft.KeyVault/vaults/spendpilot-dev-kv"
+      role_definition_name = "Key Vault Secrets User"
+    }
+
+    terraform_prod_key_vault_secrets_user = {
+      scope                = "/subscriptions/c00887fb-883e-4d8b-83ba-697054b43421/resourceGroups/rg-spendpilot-prod/providers/Microsoft.KeyVault/vaults/spendpilot-prod-kv-2300"
+      role_definition_name = "Key Vault Secrets User"
+    }
+  }
 }
 
 variable "tags" {

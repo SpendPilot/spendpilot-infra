@@ -10,7 +10,12 @@ param(
 $ErrorActionPreference = "Stop"
 $env:AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
 
-$terraformArgs = @("-var-file", "terraform.tfvars")
+$terraformArgs = @()
+$localSecretTfvars = Join-Path $PSScriptRoot "terraform.tfvars"
+
+if (Test-Path $localSecretTfvars) {
+  $terraformArgs += @("-var-file", $localSecretTfvars)
+}
 $terraformInitArgs = @("init", "-reconfigure")
 
 if (-not $BuildImagesDuringApply) {

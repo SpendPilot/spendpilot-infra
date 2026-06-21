@@ -1,0 +1,250 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "envs/**"
+      - "modules/**"
+      - "scripts/**"
+      - ".github/workflows/terraform-*.yml"
+      - ".tflint.hcl"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Terraform root to plan and apply
+        required: true
+        type: choice
+        options:
+          - dev
+          - global-shared
+          - identities
+          - nonprod-shared
+          - staging
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+  security-events: write
+
+env:
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_USE_AZUREAD: true
+  ARM_USE_OIDC: true
+  TF_IN_AUTOMATION: true
+  TF_INPUT: false
+
+jobs:
+  detect-envs:
+    runs-on: ubuntu-latest
+    outputs:
+      envs: ${{ steps.detect.outputs.envs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        shell: bash
+        run: |
+          chmod +x scripts/*.sh
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            envs_json="$(scripts/terraform-env-detect.sh --environment "${{ inputs.environment }}")"
+            echo "envs=$envs_json" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base_ref="${{ github.event.before }}"
+          if [[ -z "$base_ref" || "$base_ref" == "0000000000000000000000000000000000000000" ]]; then
+            base_ref="$(git rev-parse HEAD^)"
+          fi
+
+          envs_json="$(scripts/terraform-env-detect.sh --base "$base_ref" --head "${{ github.sha }}")"
+          echo "envs=$envs_json" >> "$GITHUB_OUTPUT"
+
+  plan:
+    needs: detect-envs
+    if: needs.detect-envs.outputs.envs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.detect-envs.outputs.envs) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Azure login with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Resolve apply-time secret inputs
+        shell: bash
+        env:
+          DEV_POSTGRES_PASSWORD_FALLBACK: ${{ secrets.TF_VAR_POSTGRES_ADMIN_PASSWORD_DEV }}
+          PROD_POSTGRES_PASSWORD_FALLBACK: ${{ secrets.TF_VAR_POSTGRES_ADMIN_PASSWORD_PROD }}
+          DEV_TERRAFORM_SECRETS_KEYVAULT_NAME: ${{ vars.DEV_TERRAFORM_SECRETS_KEYVAULT_NAME }}
+          DEV_POSTGRES_ADMIN_PASSWORD_SECRET_NAME: ${{ vars.DEV_POSTGRES_ADMIN_PASSWORD_SECRET_NAME }}
+          PROD_TERRAFORM_SECRETS_KEYVAULT_NAME: ${{ vars.PROD_TERRAFORM_SECRETS_KEYVAULT_NAME }}
+          PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME: ${{ vars.PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME }}
+        run: |
+          set -euo pipefail
+
+          vault_name=""
+          secret_name=""
+          fallback_value=""
+
+          case "${{ matrix.environment }}" in
+            dev)
+              vault_name="$DEV_TERRAFORM_SECRETS_KEYVAULT_NAME"
+              secret_name="$DEV_POSTGRES_ADMIN_PASSWORD_SECRET_NAME"
+              fallback_value="$DEV_POSTGRES_PASSWORD_FALLBACK"
+              ;;
+            prod)
+              vault_name="$PROD_TERRAFORM_SECRETS_KEYVAULT_NAME"
+              secret_name="$PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME"
+              fallback_value="$PROD_POSTGRES_PASSWORD_FALLBACK"
+              ;;
+            *)
+              exit 0
+              ;;
+          esac
+
+          secret_value=""
+          if [[ -n "$vault_name" && -n "$secret_name" ]]; then
+            secret_value="$(az keyvault secret show --vault-name "$vault_name" --name "$secret_name" --query value -o tsv)"
+          fi
+
+          if [[ -z "$secret_value" ]]; then
+            secret_value="$fallback_value"
+          fi
+
+          if [[ -z "$secret_value" ]]; then
+            echo "Missing TF_VAR_postgres_admin_password for ${{ matrix.environment }}." >&2
+            exit 1
+          fi
+
+          echo "::add-mask::$secret_value"
+          echo "TF_VAR_postgres_admin_password=$secret_value" >> "$GITHUB_ENV"
+
+      - name: Prime kubeconfig for live-cluster roots
+        shell: bash
+        run: |
+          chmod +x scripts/*.sh
+          scripts/terraform-prime-kubeconfig.sh "${{ matrix.environment }}"
+
+      - name: Terraform init
+        working-directory: envs/${{ matrix.environment }}
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        working-directory: envs/${{ matrix.environment }}
+        run: terraform validate
+
+      - name: Terraform plan
+        working-directory: envs/${{ matrix.environment }}
+        run: terraform plan -input=false -out="tfplan-${{ matrix.environment }}"
+
+      - name: Capture plan metadata
+        shell: bash
+        run: |
+          terraform version -json > "envs/${{ matrix.environment }}/terraform-version.json"
+          terraform -chdir="envs/${{ matrix.environment }}" show -no-color "tfplan-${{ matrix.environment }}" > "envs/${{ matrix.environment }}/tfplan-${{ matrix.environment }}.txt"
+          jq -n \
+            --arg environment "${{ matrix.environment }}" \
+            --arg commit_sha "${{ github.sha }}" \
+            --arg run_id "${{ github.run_id }}" \
+            --arg terraform_version "$(jq -r '.terraform_version' "envs/${{ matrix.environment }}/terraform-version.json")" \
+            --arg root_dir "envs/${{ matrix.environment }}" \
+            '{
+              environment: $environment,
+              commit_sha: $commit_sha,
+              run_id: $run_id,
+              terraform_version: $terraform_version,
+              root_dir: $root_dir
+            }' > "envs/${{ matrix.environment }}/plan-metadata.json"
+
+      - name: Upload exact saved plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ matrix.environment }}-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            envs/${{ matrix.environment }}/tfplan-${{ matrix.environment }}
+            envs/${{ matrix.environment }}/tfplan-${{ matrix.environment }}.txt
+            envs/${{ matrix.environment }}/plan-metadata.json
+          retention-days: 3
+
+  apply:
+    needs:
+      - detect-envs
+      - plan
+    if: needs.detect-envs.outputs.envs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.detect-envs.outputs.envs) }}
+    environment: terraform-${{ matrix.environment }}
+    concurrency:
+      group: terraform-${{ matrix.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Prime kubeconfig for live-cluster roots
+        shell: bash
+        run: |
+          chmod +x scripts/*.sh
+          scripts/terraform-prime-kubeconfig.sh "${{ matrix.environment }}"
+
+      - name: Download exact saved plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ matrix.environment }}-${{ github.sha }}-${{ github.run_id }}
+          path: envs/${{ matrix.environment }}
+
+      - name: Verify artifact metadata
+        shell: bash
+        run: |
+          metadata_path="envs/${{ matrix.environment }}/plan-metadata.json"
+          [[ -f "$metadata_path" ]]
+          [[ -f "envs/${{ matrix.environment }}/tfplan-${{ matrix.environment }}" ]]
+
+          test "$(jq -r '.environment' "$metadata_path")" = "${{ matrix.environment }}"
+          test "$(jq -r '.commit_sha' "$metadata_path")" = "${{ github.sha }}"
+          test "$(jq -r '.run_id' "$metadata_path")" = "${{ github.run_id }}"
+          test "$(jq -r '.root_dir' "$metadata_path")" = "envs/${{ matrix.environment }}"
+          test "$(jq -r '.terraform_version' "$metadata_path")" = "$(terraform version -json | jq -r '.terraform_version')"
+
+      - name: Terraform init
+        working-directory: envs/${{ matrix.environment }}
+        run: terraform init -input=false
+
+      - name: Terraform apply exact saved plan
+        working-directory: envs/${{ matrix.environment }}
+        run: terraform apply -input=false -auto-approve "tfplan-${{ matrix.environment }}"
