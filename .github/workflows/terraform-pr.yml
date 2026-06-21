@@ -50,26 +50,25 @@ jobs:
     needs: detect-envs
     if: needs.detect-envs.outputs.envs != '[]'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        environment: ${{ fromJson(needs.detect-envs.outputs.envs) }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
-      - name: Check formatting for changed root
-        run: terraform fmt -check -recursive "envs/${{ matrix.environment }}"
+      - name: Check formatting for changed roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t envs < <(jq -r '.[]' <<< '${{ needs.detect-envs.outputs.envs }}')
+
+          for environment in "${envs[@]}"; do
+            terraform fmt -check -recursive "envs/$environment"
+          done
 
   tflint:
     needs: detect-envs
     if: needs.detect-envs.outputs.envs != '[]'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        environment: ${{ fromJson(needs.detect-envs.outputs.envs) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -84,38 +83,57 @@ jobs:
       - name: Initialize TFLint
         run: tflint --init
 
-      - name: Run TFLint
-        run: tflint --chdir="envs/${{ matrix.environment }}"
+      - name: Run TFLint for changed roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t envs < <(jq -r '.[]' <<< '${{ needs.detect-envs.outputs.envs }}')
+
+          for environment in "${envs[@]}"; do
+            tflint --chdir="envs/$environment"
+          done
 
   security-scan:
     needs: detect-envs
     if: needs.detect-envs.outputs.envs != '[]'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        environment: ${{ fromJson(needs.detect-envs.outputs.envs) }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Trivy IaC scan for changed root
-        uses: aquasecurity/trivy-action@v0.36.0
+      - uses: aquasecurity/setup-trivy@v0.2.2
+
+      - name: Run Trivy IaC scan for changed roots
+        id: trivy-scan
+        continue-on-error: true
+        shell: bash
         env:
           TF_VAR_postgres_admin_password: trivy-static-placeholder
-          TRIVY_SKIP_VERSION_CHECK: "true"
-        with:
-          scan-type: config
-          scan-ref: envs/${{ matrix.environment }}
-          format: sarif
-          output: trivy-${{ matrix.environment }}.sarif
-          severity: HIGH,CRITICAL
-          exit-code: "1"
+        run: |
+          set -uo pipefail
+          mapfile -t envs < <(jq -r '.[]' <<< '${{ needs.detect-envs.outputs.envs }}')
+          status=0
 
-      - name: Upload Trivy SARIF
+          mkdir -p trivy-results
+
+          for environment in "${envs[@]}"; do
+            trivy config \
+              --skip-version-check \
+              --severity HIGH,CRITICAL \
+              --exit-code 1 \
+              --format sarif \
+              --output "trivy-results/trivy-$environment.sarif" \
+              "envs/$environment" || status=$?
+          done
+
+          exit "$status"
+
+      - name: Upload Trivy results
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: trivy-${{ matrix.environment }}.sarif
+          name: trivy-results-${{ github.event.pull_request.head.sha }}-${{ github.run_id }}
+          path: trivy-results/*.sarif
+          retention-days: 5
 
   checks-summary:
     needs:
@@ -146,10 +164,6 @@ jobs:
       - security-scan
     if: needs.detect-envs.outputs.envs != '[]'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        environment: ${{ fromJson(needs.detect-envs.outputs.envs) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -185,7 +199,7 @@ jobs:
         with:
           terraform_wrapper: false
 
-      - name: Resolve plan-time secret inputs
+      - name: Plan changed roots
         shell: bash
         env:
           DEV_POSTGRES_PASSWORD_FALLBACK: ${{ secrets.TF_VAR_POSTGRES_ADMIN_PASSWORD_DEV }}
@@ -196,83 +210,76 @@ jobs:
           PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME: ${{ vars.PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME }}
         run: |
           set -euo pipefail
-
-          vault_name=""
-          secret_name=""
-          fallback_value=""
-
-          case "${{ matrix.environment }}" in
-            dev)
-              vault_name="$DEV_TERRAFORM_SECRETS_KEYVAULT_NAME"
-              secret_name="$DEV_POSTGRES_ADMIN_PASSWORD_SECRET_NAME"
-              fallback_value="$DEV_POSTGRES_PASSWORD_FALLBACK"
-              ;;
-            prod)
-              vault_name="$PROD_TERRAFORM_SECRETS_KEYVAULT_NAME"
-              secret_name="$PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME"
-              fallback_value="$PROD_POSTGRES_PASSWORD_FALLBACK"
-              ;;
-            *)
-              exit 0
-              ;;
-          esac
-
-          secret_value=""
-          if [[ -n "$vault_name" && -n "$secret_name" ]]; then
-            secret_value="$(az keyvault secret show --vault-name "$vault_name" --name "$secret_name" --query value -o tsv)"
-          fi
-
-          if [[ -z "$secret_value" ]]; then
-            secret_value="$fallback_value"
-          fi
-
-          if [[ -z "$secret_value" ]]; then
-            echo "Missing TF_VAR_postgres_admin_password for ${{ matrix.environment }}." >&2
-            exit 1
-          fi
-
-          echo "::add-mask::$secret_value"
-          echo "TF_VAR_postgres_admin_password=$secret_value" >> "$GITHUB_ENV"
-
-      - name: Prime kubeconfig for live-cluster roots
-        shell: bash
-        run: |
+          mapfile -t envs < <(jq -r '.[]' <<< '${{ needs.detect-envs.outputs.envs }}')
           chmod +x scripts/*.sh
-          scripts/terraform-prime-kubeconfig.sh "${{ matrix.environment }}"
+          : > terraform-plan-comment.md
 
-      - name: Terraform init
-        working-directory: envs/${{ matrix.environment }}
-        run: terraform init -input=false
+          for environment in "${envs[@]}"; do
+            vault_name=""
+            secret_name=""
+            fallback_value=""
 
-      - name: Terraform validate
-        working-directory: envs/${{ matrix.environment }}
-        run: terraform validate
+            case "$environment" in
+              dev)
+                vault_name="$DEV_TERRAFORM_SECRETS_KEYVAULT_NAME"
+                secret_name="$DEV_POSTGRES_ADMIN_PASSWORD_SECRET_NAME"
+                fallback_value="$DEV_POSTGRES_PASSWORD_FALLBACK"
+                ;;
+              prod)
+                vault_name="$PROD_TERRAFORM_SECRETS_KEYVAULT_NAME"
+                secret_name="$PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME"
+                fallback_value="$PROD_POSTGRES_PASSWORD_FALLBACK"
+                ;;
+            esac
 
-      - name: Terraform plan
-        working-directory: envs/${{ matrix.environment }}
-        run: terraform plan -input=false -out="tfplan-${{ matrix.environment }}"
+            secret_value=""
+            if [[ -n "$vault_name" && -n "$secret_name" ]]; then
+              secret_value="$(az keyvault secret show --vault-name "$vault_name" --name "$secret_name" --query value -o tsv)"
+            fi
 
-      - name: Render plan outputs
-        shell: bash
-        run: |
-          terraform -chdir="envs/${{ matrix.environment }}" show -no-color "tfplan-${{ matrix.environment }}" > "envs/${{ matrix.environment }}/tfplan-${{ matrix.environment }}.txt"
-          terraform -chdir="envs/${{ matrix.environment }}" show -json "tfplan-${{ matrix.environment }}" > "envs/${{ matrix.environment }}/plan.json"
-          chmod +x scripts/*.sh
-          scripts/terraform-plan-summary.sh "${{ matrix.environment }}" "envs/${{ matrix.environment }}/plan.json" > "envs/${{ matrix.environment }}/plan-summary.md"
+            if [[ -z "$secret_value" ]]; then
+              secret_value="$fallback_value"
+            fi
+
+            if [[ -n "$secret_value" ]]; then
+              echo "::add-mask::$secret_value"
+            fi
+
+            scripts/terraform-prime-kubeconfig.sh "$environment"
+
+            tf_env_args=()
+            if [[ -n "$secret_value" ]]; then
+              tf_env_args=("TF_VAR_postgres_admin_password=$secret_value")
+            fi
+
+            env "${tf_env_args[@]}" terraform -chdir="envs/$environment" init -input=false
+            env "${tf_env_args[@]}" terraform -chdir="envs/$environment" validate
+            env "${tf_env_args[@]}" terraform -chdir="envs/$environment" plan -input=false -out="tfplan-$environment"
+            terraform -chdir="envs/$environment" show -no-color "tfplan-$environment" > "envs/$environment/tfplan-$environment.txt"
+            terraform -chdir="envs/$environment" show -json "tfplan-$environment" > "envs/$environment/plan.json"
+            scripts/terraform-plan-summary.sh "$environment" "envs/$environment/plan.json" > "envs/$environment/plan-summary.md"
+
+            {
+              echo "## \`$environment\`"
+              echo
+              cat "envs/$environment/plan-summary.md"
+              echo
+            } >> terraform-plan-comment.md
+          done
 
       - name: Comment plan summary on PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
-          header: terraform-plan-${{ matrix.environment }}
-          path: envs/${{ matrix.environment }}/plan-summary.md
+          header: terraform-plan
+          path: terraform-plan-comment.md
 
       - name: Upload review plan artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pr-tfplan-text-${{ matrix.environment }}-${{ github.event.pull_request.head.sha }}-${{ github.run_id }}
+          name: pr-tfplan-text-${{ github.event.pull_request.head.sha }}-${{ github.run_id }}
           path: |
-            envs/${{ matrix.environment }}/tfplan-${{ matrix.environment }}.txt
-            envs/${{ matrix.environment }}/plan-summary.md
+            envs/*/tfplan-*.txt
+            envs/*/plan-summary.md
           retention-days: 5
 
       - name: Setup Infracost
@@ -283,14 +290,27 @@ jobs:
         if: ${{ env.INFRACOST_API_KEY != '' }}
         shell: bash
         run: |
-          infracost breakdown \
-            --path="envs/${{ matrix.environment }}/plan.json" \
-            --format=table \
-            --out-file="envs/${{ matrix.environment }}/infracost.md"
+          set -euo pipefail
+          mapfile -t envs < <(jq -r '.[]' <<< '${{ needs.detect-envs.outputs.envs }}')
+          : > infracost-comment.md
+
+          for environment in "${envs[@]}"; do
+            infracost breakdown \
+              --path="envs/$environment/plan.json" \
+              --format=table \
+              --out-file="envs/$environment/infracost.md"
+
+            {
+              echo "## \`$environment\`"
+              echo
+              cat "envs/$environment/infracost.md"
+              echo
+            } >> infracost-comment.md
+          done
 
       - name: Comment Infracost on PR
         if: ${{ env.INFRACOST_API_KEY != '' }}
         uses: marocchino/sticky-pull-request-comment@v2
         with:
-          header: infracost-${{ matrix.environment }}
-          path: envs/${{ matrix.environment }}/infracost.md
+          header: infracost
+          path: infracost-comment.md
