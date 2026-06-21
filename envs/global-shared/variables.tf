@@ -1,3 +1,5 @@
+// PR validation marker: non-functional comment to trigger the Terraform workflow on global-shared.
+
 variable "prefix" {
   description = "Project prefix used for Azure resource names."
   type        = string
