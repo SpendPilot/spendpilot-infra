@@ -81,6 +81,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate shared Azure auth variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+
+          for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required workflow variable: $name" >&2
+              missing=1
+            fi
+          done
+
+          if [[ "$missing" -ne 0 ]]; then
+            echo "Set AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID as repository or organization variables." >&2
+            echo "Main workflow plan jobs also expect these shared values before any environment-gated apply step." >&2
+            exit 1
+          fi
+
       - name: Azure login with OIDC
         uses: azure/login@v2
         with:
