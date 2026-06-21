@@ -37,4 +37,5 @@ az aks get-credentials \
   --name "$cluster_name" \
   --admin \
   --overwrite-existing \
+  --file "envs/${environment_name}/.generated-kubeconfig" \
   1>/dev/null

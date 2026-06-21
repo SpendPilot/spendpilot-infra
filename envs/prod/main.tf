@@ -349,12 +349,15 @@ resource "terraform_data" "aks_get_credentials" {
   triggers_replace = {
     cluster_name        = module.aks_cluster.name
     resource_group_name = module.resource_group.name
-    context_name        = local.aks_context_name
+    kubeconfig_path     = "${path.root}/.generated-kubeconfig"
   }
 
   provisioner "local-exec" {
     interpreter = ["PowerShell", "-Command"]
-    command     = "az aks get-credentials --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --overwrite-existing"
+    command     = "az aks get-credentials --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --admin --overwrite-existing --file ${path.root}/.generated-kubeconfig"
+    environment = {
+      AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
+    }
   }
 
   depends_on = [module.aks_cluster]

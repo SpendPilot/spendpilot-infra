@@ -2,7 +2,6 @@ locals {
   name         = lower("${var.prefix}-${var.environment}")
   compact_name = substr(replace(lower("${var.prefix}${var.environment}"), "-", ""), 0, 18)
 
-  aks_context_name         = "${local.name}-aks"
   key_vault_name           = trimspace(var.key_vault_name) != "" ? trimspace(var.key_vault_name) : substr("${local.name}-kv", 0, 24)
   frontdoor_enabled        = var.frontdoor_enabled
   frontdoor_apex_host_name = trimspace(var.frontdoor_apex_host_name)

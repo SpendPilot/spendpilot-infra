@@ -45,13 +45,11 @@ provider "azurerm" {
 provider "azuread" {}
 
 provider "kubernetes" {
-  config_path    = pathexpand("~/.kube/config")
-  config_context = local.aks_context_name
+  config_path = fileexists("${path.root}/.generated-kubeconfig") ? "${path.root}/.generated-kubeconfig" : pathexpand("~/.kube/config")
 }
 
 provider "helm" {
   kubernetes {
-    config_path    = pathexpand("~/.kube/config")
-    config_context = local.aks_context_name
+    config_path = fileexists("${path.root}/.generated-kubeconfig") ? "${path.root}/.generated-kubeconfig" : pathexpand("~/.kube/config")
   }
 }
