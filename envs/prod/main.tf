@@ -35,7 +35,7 @@ data "terraform_remote_state" "identities" {
 module "resource_group" {
   source = "../../modules/resource-group"
 
-  name     = local.rg_name
+  name     = var.resource_group_name
   location = var.location
   tags     = local.tags
 }
@@ -240,6 +240,101 @@ resource "azurerm_key_vault" "workload" {
   purge_protection_enabled      = true
   soft_delete_retention_days    = 90
   tags                          = local.tags
+}
+
+resource "azurerm_subnet" "private_endpoints" {
+  count = var.enable_key_vault_private_endpoint ? 1 : 0
+
+  name                              = "private-endpoints-subnet"
+  resource_group_name               = module.resource_group.name
+  virtual_network_name              = module.network.virtual_network_name
+  address_prefixes                  = [var.private_endpoint_subnet_cidr]
+  private_endpoint_network_policies = "NetworkSecurityGroupEnabled"
+}
+
+resource "azurerm_network_security_group" "private_endpoints" {
+  count = var.enable_key_vault_private_endpoint ? 1 : 0
+
+  name                = "${local.name}-private-endpoints-nsg"
+  location            = module.resource_group.location
+  resource_group_name = module.resource_group.name
+  tags                = local.tags
+
+  security_rule {
+    name                       = "AllowAksToKeyVaultPrivateEndpointHttps"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = var.aks_subnet_cidr
+    destination_address_prefix = var.private_endpoint_subnet_cidr
+  }
+
+  security_rule {
+    name                       = "DenyOtherVnetTrafficToPrivateEndpoints"
+    priority                   = 200
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = var.private_endpoint_subnet_cidr
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "private_endpoints" {
+  count = var.enable_key_vault_private_endpoint ? 1 : 0
+
+  subnet_id                 = azurerm_subnet.private_endpoints[0].id
+  network_security_group_id = azurerm_network_security_group.private_endpoints[0].id
+}
+
+resource "azurerm_private_dns_zone" "key_vault" {
+  count = var.enable_key_vault_private_endpoint ? 1 : 0
+
+  name                = "privatelink.vaultcore.azure.net"
+  resource_group_name = module.resource_group.name
+  tags                = local.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "key_vault" {
+  count = var.enable_key_vault_private_endpoint ? 1 : 0
+
+  name                  = "${local.name}-kv-vnet-link"
+  resource_group_name   = module.resource_group.name
+  private_dns_zone_name = azurerm_private_dns_zone.key_vault[0].name
+  virtual_network_id    = module.network.virtual_network_id
+  tags                  = local.tags
+}
+
+resource "azurerm_private_endpoint" "key_vault" {
+  count = var.enable_key_vault_private_endpoint ? 1 : 0
+
+  name                = "${local.name}-kv-pe"
+  location            = module.resource_group.location
+  resource_group_name = module.resource_group.name
+  subnet_id           = azurerm_subnet.private_endpoints[0].id
+  tags                = local.tags
+
+  private_service_connection {
+    name                           = "${local.name}-kv-psc"
+    private_connection_resource_id = azurerm_key_vault.workload.id
+    is_manual_connection           = false
+    subresource_names              = ["vault"]
+  }
+
+  private_dns_zone_group {
+    name                 = "default"
+    private_dns_zone_ids = [azurerm_private_dns_zone.key_vault[0].id]
+  }
+
+  depends_on = [
+    azurerm_subnet_network_security_group_association.private_endpoints,
+    azurerm_private_dns_zone_virtual_network_link.key_vault,
+  ]
 }
 
 resource "azurerm_federated_identity_credential" "workload" {

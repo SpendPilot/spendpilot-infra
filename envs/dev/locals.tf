@@ -1,8 +1,6 @@
 locals {
   name           = lower("${var.prefix}-${var.environment}")
   compact_name   = substr(replace(lower("${var.prefix}${var.environment}"), "-", ""), 0, 18)
-  alnum_name     = replace(local.name, "-", "")
-  rg_name        = var.resource_group_name
   frontend_repo  = "${data.azurerm_container_registry.global_shared.login_server}/spend-control-frontend"
   identity_repo  = "${data.azurerm_container_registry.global_shared.login_server}/spend-control-identity"
   finance_repo   = "${data.azurerm_container_registry.global_shared.login_server}/spend-control-finance"
@@ -19,7 +17,6 @@ locals {
       trimspace(var.public_host_name) != "" ? ["https://${trimspace(var.public_host_name)}/login"] : [],
     )
   )
-  kube_admin_config = try(yamldecode(data.azurerm_kubernetes_cluster.credentials.kube_admin_config_raw), null)
 
   tags = merge(
     {

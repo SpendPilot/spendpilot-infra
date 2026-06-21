@@ -78,6 +78,14 @@ output "key_vault_uri" {
   value = azurerm_key_vault.workload.vault_uri
 }
 
+output "key_vault_private_endpoint_ip" {
+  value = var.enable_key_vault_private_endpoint ? azurerm_private_endpoint.key_vault[0].private_service_connection[0].private_ip_address : null
+}
+
+output "key_vault_private_dns_zone_name" {
+  value = var.enable_key_vault_private_endpoint ? azurerm_private_dns_zone.key_vault[0].name : null
+}
+
 output "key_vault_database_url_secret_name" {
   value = var.key_vault_database_url_secret_name
 }

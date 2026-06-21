@@ -190,6 +190,18 @@ variable "db_subnet_cidr" {
   default     = "10.40.20.0/24"
 }
 
+variable "private_endpoint_subnet_cidr" {
+  description = "Dedicated subnet CIDR for private endpoints."
+  type        = string
+  default     = "10.40.30.0/24"
+}
+
+variable "enable_key_vault_private_endpoint" {
+  description = "Whether to create a private endpoint for the prod Key Vault."
+  type        = bool
+  default     = true
+}
+
 variable "service_cidr" {
   description = "Kubernetes service CIDR."
   type        = string
