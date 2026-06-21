@@ -263,3 +263,31 @@ output "gitops_values_contract" {
     postgres_database_url_template = "postgresql+psycopg://${var.postgres_admin_login}:<postgres_admin_password>@${module.postgres.fqdn}:5432/${module.postgres.database_name}?sslmode=require"
   }
 }
+
+output "email_delivery_contract" {
+  value = {
+    service_bus_fully_qualified_namespace = module.email_delivery.service_bus_fully_qualified_namespace
+    service_bus_queue_name                = module.email_delivery.service_bus_queue_name
+    function_app_name                     = module.email_delivery.function_app_name
+    function_app_default_hostname         = module.email_delivery.function_app_default_hostname
+    communication_service_endpoint        = module.email_delivery.communication_service_endpoint
+    email_sender_address                  = module.email_delivery.email_sender_address
+    email_domain_verification_records     = module.email_delivery.email_domain_verification_records
+  }
+}
+
+output "service_bus_fully_qualified_namespace" {
+  value = module.email_delivery.service_bus_fully_qualified_namespace
+}
+
+output "service_bus_queue_name" {
+  value = module.email_delivery.service_bus_queue_name
+}
+
+output "email_sender_function_app_name" {
+  value = module.email_delivery.function_app_name
+}
+
+output "email_sender_address" {
+  value = module.email_delivery.email_sender_address
+}

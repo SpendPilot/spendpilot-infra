@@ -364,6 +364,12 @@ variable "global_shared_state_key" {
   default     = "global-shared.tfstate"
 }
 
+variable "identities_state_key" {
+  description = "State key for the shared identities Terraform root."
+  type        = string
+  default     = "identities.tfstate"
+}
+
 variable "document_intelligence_sku" {
   description = "Document Intelligence SKU."
   type        = string
@@ -537,4 +543,40 @@ variable "frontdoor_www_host_name" {
   description = "Optional www domain to onboard on Front Door."
   type        = string
   default     = ""
+}
+
+variable "email_data_location" {
+  description = "Data location for Azure Communication Services Email."
+  type        = string
+  default     = "India"
+}
+
+variable "email_domain_name" {
+  description = "Email domain resource name for prod. Use the custom sender domain when customer-managed."
+  type        = string
+  default     = "costpilot.online"
+}
+
+variable "email_domain_management" {
+  description = "Email domain management mode for prod."
+  type        = string
+  default     = "CustomerManaged"
+}
+
+variable "email_sender_username" {
+  description = "Mail-from username used by the prod email sender function."
+  type        = string
+  default     = "notifications"
+}
+
+variable "email_sender_display_name" {
+  description = "Display name used by the prod email sender function."
+  type        = string
+  default     = "SpendPilot"
+}
+
+variable "email_domain_association_enabled" {
+  description = "Whether prod should attempt to link the ACS email domain now. Keep false until Hostinger DNS verification records are live."
+  type        = bool
+  default     = false
 }

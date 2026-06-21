@@ -64,6 +64,12 @@ variable "nonprod_shared_state_key" {
   default     = "nonprod-shared.tfstate"
 }
 
+variable "identities_state_key" {
+  description = "Remote state key for the shared identities root."
+  type        = string
+  default     = "identities.tfstate"
+}
+
 variable "kubernetes_version" {
   description = "AKS version kept within the current kGateway support matrix."
   type        = string
@@ -438,4 +444,34 @@ variable "github_actions_main_branch" {
   description = "GitHub branch allowed to exchange OIDC tokens for mainline Terraform applies."
   type        = string
   default     = "main"
+}
+
+variable "email_data_location" {
+  description = "Data location for Azure Communication Services Email."
+  type        = string
+  default     = "India"
+}
+
+variable "email_domain_name" {
+  description = "Email domain resource name for dev. Use AzureManagedDomain for managed domains."
+  type        = string
+  default     = "AzureManagedDomain"
+}
+
+variable "email_domain_management" {
+  description = "Email domain management mode for dev."
+  type        = string
+  default     = "AzureManaged"
+}
+
+variable "email_sender_username" {
+  description = "Mail-from username used by the dev email sender function."
+  type        = string
+  default     = "DoNotReply"
+}
+
+variable "email_sender_display_name" {
+  description = "Display name used by the dev email sender function."
+  type        = string
+  default     = "SpendPilot Dev"
 }

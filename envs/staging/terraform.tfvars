@@ -11,6 +11,11 @@ frontdoor_origin_hostname_override = ""
 frontdoor_origin_use_https         = false
 gateway_public_ip                  = ""
 gateway_public_hostname            = ""
+email_data_location                = "India"
+email_domain_name                  = "AzureManagedDomain"
+email_domain_management            = "AzureManaged"
+email_sender_username              = "DoNotReply"
+email_sender_display_name          = "SpendPilot Staging"
 
 tags = {
   env         = "staging"

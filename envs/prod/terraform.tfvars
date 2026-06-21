@@ -87,6 +87,12 @@ frontdoor_origin_use_https         = false
 frontdoor_origin_hostname_override = ""
 frontdoor_apex_host_name           = "costpilot.online"
 frontdoor_www_host_name            = ""
+email_data_location                = "India"
+email_domain_name                  = "costpilot.online"
+email_domain_management            = "CustomerManaged"
+email_domain_association_enabled   = false
+email_sender_username              = "notifications"
+email_sender_display_name          = "SpendPilot"
 
 # Platform bootstrap
 kgateway_version     = "2.3.0"

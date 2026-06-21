@@ -27,6 +27,19 @@ data "terraform_remote_state" "nonprod_shared" {
   }
 }
 
+data "terraform_remote_state" "identities" {
+  backend = "azurerm"
+
+  config = {
+    resource_group_name  = var.backend_resource_group_name
+    storage_account_name = var.backend_storage_account_name
+    container_name       = var.backend_container_name
+    key                  = var.identities_state_key
+    subscription_id      = data.azurerm_client_config.current.subscription_id
+    tenant_id            = data.azurerm_client_config.current.tenant_id
+  }
+}
+
 data "azurerm_container_registry" "global_shared" {
   name                = data.terraform_remote_state.global_shared.outputs.acr_name
   resource_group_name = data.terraform_remote_state.global_shared.outputs.resource_group_name
@@ -310,6 +323,22 @@ resource "time_sleep" "wait_for_key_vault_rbac" {
     azurerm_role_assignment.key_vault_secrets_user,
     azurerm_role_assignment.key_vault_secrets_officer_current_user,
   ]
+}
+
+module "email_delivery" {
+  source = "../../modules/email-delivery"
+
+  name                         = local.name
+  location                     = module.resource_group.location
+  resource_group_name          = module.resource_group.name
+  tags                         = local.tags
+  backend_sender_principal_id  = azurerm_user_assigned_identity.workload.principal_id
+  github_actions_principal_id  = try(data.terraform_remote_state.identities.outputs.github_actions_service_principal_object_id, "")
+  email_data_location          = var.email_data_location
+  email_domain_name            = var.email_domain_name
+  email_domain_management      = var.email_domain_management
+  function_sender_username     = var.email_sender_username
+  function_sender_display_name = var.email_sender_display_name
 }
 
 resource "azuread_application" "backend_api" {

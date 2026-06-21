@@ -100,6 +100,10 @@ resource "azurerm_cdn_frontdoor_profile" "this" {
   resource_group_name = module.resource_group.name
   sku_name            = var.frontdoor_sku_name
   tags                = local.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_endpoint" "this" {
@@ -107,6 +111,10 @@ resource "azurerm_cdn_frontdoor_endpoint" "this" {
 
   name                     = "${local.name}-ep"
   cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this[0].id
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_custom_domain" "dev" {
@@ -119,6 +127,10 @@ resource "azurerm_cdn_frontdoor_custom_domain" "dev" {
   tls {
     certificate_type = "ManagedCertificate"
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_custom_domain" "staging" {
@@ -130,6 +142,10 @@ resource "azurerm_cdn_frontdoor_custom_domain" "staging" {
 
   tls {
     certificate_type = "ManagedCertificate"
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
@@ -152,6 +168,10 @@ resource "azurerm_cdn_frontdoor_origin_group" "dev" {
     sample_size                        = 4
     successful_samples_required        = 3
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_origin_group" "staging" {
@@ -173,6 +193,10 @@ resource "azurerm_cdn_frontdoor_origin_group" "staging" {
     sample_size                        = 4
     successful_samples_required        = 3
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_origin" "dev" {
@@ -188,6 +212,10 @@ resource "azurerm_cdn_frontdoor_origin" "dev" {
   priority                       = 1
   weight                         = 1000
   certificate_name_check_enabled = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_origin" "staging" {
@@ -203,6 +231,10 @@ resource "azurerm_cdn_frontdoor_origin" "staging" {
   priority                       = 1
   weight                         = 1000
   certificate_name_check_enabled = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_firewall_policy" "this" {
@@ -242,6 +274,10 @@ resource "azurerm_cdn_frontdoor_firewall_policy" "this" {
       match_values   = ["/api/auth"]
     }
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_route" "dev" {
@@ -260,6 +296,10 @@ resource "azurerm_cdn_frontdoor_route" "dev" {
   patterns_to_match      = ["/*"]
   supported_protocols    = ["Http", "Https"]
   link_to_default_domain = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_route" "staging" {
@@ -278,6 +318,10 @@ resource "azurerm_cdn_frontdoor_route" "staging" {
   patterns_to_match      = ["/*"]
   supported_protocols    = ["Http", "Https"]
   link_to_default_domain = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_security_policy" "this" {
@@ -309,5 +353,9 @@ resource "azurerm_cdn_frontdoor_security_policy" "this" {
         patterns_to_match = ["/*"]
       }
     }
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }

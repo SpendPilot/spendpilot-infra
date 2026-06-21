@@ -87,3 +87,39 @@ variable "nonprod_shared_state_key" {
   type        = string
   default     = "nonprod-shared.tfstate"
 }
+
+variable "identities_state_key" {
+  description = "Remote state key for the shared identities root."
+  type        = string
+  default     = "identities.tfstate"
+}
+
+variable "email_data_location" {
+  description = "Data location for Azure Communication Services Email."
+  type        = string
+  default     = "India"
+}
+
+variable "email_domain_name" {
+  description = "Email domain resource name for staging."
+  type        = string
+  default     = "AzureManagedDomain"
+}
+
+variable "email_domain_management" {
+  description = "Email domain management mode for staging."
+  type        = string
+  default     = "AzureManaged"
+}
+
+variable "email_sender_username" {
+  description = "Mail-from username used by the staging email sender function."
+  type        = string
+  default     = "DoNotReply"
+}
+
+variable "email_sender_display_name" {
+  description = "Display name used by the staging email sender function."
+  type        = string
+  default     = "SpendPilot Staging"
+}

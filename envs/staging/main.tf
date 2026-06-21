@@ -18,10 +18,36 @@ data "terraform_remote_state" "nonprod_shared" {
   }
 }
 
+data "terraform_remote_state" "identities" {
+  backend = "azurerm"
+
+  config = {
+    resource_group_name  = var.backend_resource_group_name
+    storage_account_name = var.backend_storage_account_name
+    container_name       = var.backend_container_name
+    key                  = var.identities_state_key
+  }
+}
+
 module "resource_group" {
   source = "../../modules/resource-group"
 
   name     = var.resource_group_name
   location = var.location
   tags     = local.tags
+}
+
+module "email_delivery" {
+  source = "../../modules/email-delivery"
+
+  name                         = "${var.prefix}-${var.environment}"
+  location                     = module.resource_group.location
+  resource_group_name          = module.resource_group.name
+  tags                         = local.tags
+  github_actions_principal_id  = try(data.terraform_remote_state.identities.outputs.github_actions_service_principal_object_id, "")
+  email_data_location          = var.email_data_location
+  email_domain_name            = var.email_domain_name
+  email_domain_management      = var.email_domain_management
+  function_sender_username     = var.email_sender_username
+  function_sender_display_name = var.email_sender_display_name
 }

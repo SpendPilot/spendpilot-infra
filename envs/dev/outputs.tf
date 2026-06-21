@@ -163,3 +163,30 @@ output "frontdoor_origin_contract" {
     frontend_path_prefix = "/*"
   }
 }
+
+output "email_delivery_contract" {
+  value = {
+    service_bus_fully_qualified_namespace = module.email_delivery.service_bus_fully_qualified_namespace
+    service_bus_queue_name                = module.email_delivery.service_bus_queue_name
+    function_app_name                     = module.email_delivery.function_app_name
+    function_app_default_hostname         = module.email_delivery.function_app_default_hostname
+    communication_service_endpoint        = module.email_delivery.communication_service_endpoint
+    email_sender_address                  = module.email_delivery.email_sender_address
+  }
+}
+
+output "service_bus_fully_qualified_namespace" {
+  value = module.email_delivery.service_bus_fully_qualified_namespace
+}
+
+output "service_bus_queue_name" {
+  value = module.email_delivery.service_bus_queue_name
+}
+
+output "email_sender_function_app_name" {
+  value = module.email_delivery.function_app_name
+}
+
+output "email_sender_address" {
+  value = module.email_delivery.email_sender_address
+}

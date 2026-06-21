@@ -8,4 +8,8 @@ resource "azurerm_container_registry" "this" {
   public_network_access_enabled = var.public_network_access_enabled
   zone_redundancy_enabled       = var.sku == "Premium" ? var.zone_redundancy_enabled : false
   tags                          = var.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }

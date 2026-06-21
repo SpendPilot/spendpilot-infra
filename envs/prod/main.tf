@@ -19,6 +19,19 @@ data "azurerm_container_registry" "global_shared" {
   resource_group_name = data.terraform_remote_state.global_shared.outputs.resource_group_name
 }
 
+data "terraform_remote_state" "identities" {
+  backend = "azurerm"
+
+  config = {
+    resource_group_name  = var.backend_resource_group_name
+    storage_account_name = var.backend_storage_account_name
+    container_name       = var.backend_container_name
+    key                  = var.identities_state_key
+    subscription_id      = data.azurerm_client_config.current.subscription_id
+    tenant_id            = data.azurerm_client_config.current.tenant_id
+  }
+}
+
 module "resource_group" {
   source = "../../modules/resource-group"
 
@@ -385,6 +398,23 @@ resource "time_sleep" "wait_for_key_vault_rbac" {
   ]
 }
 
+module "email_delivery" {
+  source = "../../modules/email-delivery"
+
+  name                            = local.name
+  location                        = module.resource_group.location
+  resource_group_name             = module.resource_group.name
+  tags                            = local.tags
+  backend_sender_principal_id     = azurerm_user_assigned_identity.workload.principal_id
+  github_actions_principal_id     = try(data.terraform_remote_state.identities.outputs.github_actions_service_principal_object_id, "")
+  email_data_location             = var.email_data_location
+  email_domain_name               = var.email_domain_name
+  email_domain_management         = var.email_domain_management
+  function_sender_username        = var.email_sender_username
+  function_sender_display_name    = var.email_sender_display_name
+  manage_email_domain_association = var.email_domain_association_enabled
+}
+
 resource "kubernetes_config_map_v1" "spendpilot" {
   metadata {
     name      = var.app_config_map_name
@@ -392,31 +422,34 @@ resource "kubernetes_config_map_v1" "spendpilot" {
   }
 
   data = {
-    APP_ENV                              = "production"
-    BACKEND_CORS_ORIGINS                 = var.backend_cors_origins
-    AUTH_MODE                            = "entra"
-    AZURE_TENANT_ID                      = data.azurerm_client_config.current.tenant_id
-    AZURE_CLIENT_ID                      = azurerm_user_assigned_identity.workload.client_id
-    ENTRA_FRONTEND_CLIENT_ID             = azuread_application.frontend_spa.client_id
-    ENTRA_BACKEND_CLIENT_ID              = azuread_application.backend_api.client_id
-    ENTRA_BACKEND_AUDIENCE               = var.backend_application_id_uri
-    ENTRA_AUTHORITY                      = var.auth_authority
-    ENTRA_ALLOWED_TENANT_IDS             = var.allowed_tenant_ids
-    PLATFORM_ADMIN_EMAILS                = var.platform_admin_emails
-    AZURE_AI_FOUNDRY_ENDPOINT            = azurerm_cognitive_account.foundry.endpoint
-    AZURE_AI_PROJECT_ENDPOINT            = ""
-    AZURE_AI_MODEL_DEPLOYMENT            = azurerm_cognitive_deployment.foundry_model.name
-    AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT = azurerm_cognitive_account.document_intelligence.endpoint
-    AZURE_STORAGE_ACCOUNT_URL            = azurerm_storage_account.documents.primary_blob_endpoint
-    AZURE_STORAGE_CONTAINER_NAME         = azurerm_storage_container.documents.name
-    FINANCE_DEFAULT_CURRENCY             = var.finance_default_currency
-    NEXT_PUBLIC_API_BASE_URL             = var.frontend_api_base_url
-    NEXT_PUBLIC_AUTH_MODE                = "entra"
-    NEXT_PUBLIC_ENTRA_FRONTEND_CLIENT_ID = azuread_application.frontend_spa.client_id
-    NEXT_PUBLIC_ENTRA_BACKEND_CLIENT_ID  = azuread_application.backend_api.client_id
-    NEXT_PUBLIC_ENTRA_BACKEND_AUDIENCE   = var.backend_application_id_uri
-    NEXT_PUBLIC_ENTRA_API_SCOPE          = "${var.backend_application_id_uri}/access_as_user"
-    NEXT_PUBLIC_ENTRA_AUTHORITY          = var.auth_authority
+    APP_ENV                                     = "production"
+    BACKEND_CORS_ORIGINS                        = var.backend_cors_origins
+    AUTH_MODE                                   = "entra"
+    AZURE_TENANT_ID                             = data.azurerm_client_config.current.tenant_id
+    AZURE_CLIENT_ID                             = azurerm_user_assigned_identity.workload.client_id
+    ENTRA_FRONTEND_CLIENT_ID                    = azuread_application.frontend_spa.client_id
+    ENTRA_BACKEND_CLIENT_ID                     = azuread_application.backend_api.client_id
+    ENTRA_BACKEND_AUDIENCE                      = var.backend_application_id_uri
+    ENTRA_AUTHORITY                             = var.auth_authority
+    ENTRA_ALLOWED_TENANT_IDS                    = var.allowed_tenant_ids
+    PLATFORM_ADMIN_EMAILS                       = var.platform_admin_emails
+    AZURE_AI_FOUNDRY_ENDPOINT                   = azurerm_cognitive_account.foundry.endpoint
+    AZURE_AI_PROJECT_ENDPOINT                   = ""
+    AZURE_AI_MODEL_DEPLOYMENT                   = azurerm_cognitive_deployment.foundry_model.name
+    AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT        = azurerm_cognitive_account.document_intelligence.endpoint
+    AZURE_STORAGE_ACCOUNT_URL                   = azurerm_storage_account.documents.primary_blob_endpoint
+    AZURE_STORAGE_CONTAINER_NAME                = azurerm_storage_container.documents.name
+    EMAIL_NOTIFICATIONS_ENABLED                 = "true"
+    AZURE_SERVICE_BUS_FULLY_QUALIFIED_NAMESPACE = module.email_delivery.service_bus_fully_qualified_namespace
+    AZURE_SERVICE_BUS_QUEUE_NAME                = module.email_delivery.service_bus_queue_name
+    FINANCE_DEFAULT_CURRENCY                    = var.finance_default_currency
+    NEXT_PUBLIC_API_BASE_URL                    = var.frontend_api_base_url
+    NEXT_PUBLIC_AUTH_MODE                       = "entra"
+    NEXT_PUBLIC_ENTRA_FRONTEND_CLIENT_ID        = azuread_application.frontend_spa.client_id
+    NEXT_PUBLIC_ENTRA_BACKEND_CLIENT_ID         = azuread_application.backend_api.client_id
+    NEXT_PUBLIC_ENTRA_BACKEND_AUDIENCE          = var.backend_application_id_uri
+    NEXT_PUBLIC_ENTRA_API_SCOPE                 = "${var.backend_application_id_uri}/access_as_user"
+    NEXT_PUBLIC_ENTRA_AUTHORITY                 = var.auth_authority
   }
 
   depends_on = [
@@ -670,6 +703,10 @@ resource "azurerm_cdn_frontdoor_profile" "this" {
   resource_group_name = module.resource_group.name
   sku_name            = var.frontdoor_sku_name
   tags                = local.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_endpoint" "this" {
@@ -679,6 +716,10 @@ resource "azurerm_cdn_frontdoor_endpoint" "this" {
   cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this[0].id
   enabled                  = true
   tags                     = local.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_custom_domain" "apex" {
@@ -691,6 +732,10 @@ resource "azurerm_cdn_frontdoor_custom_domain" "apex" {
   tls {
     certificate_type = "ManagedCertificate"
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_custom_domain" "www" {
@@ -702,6 +747,10 @@ resource "azurerm_cdn_frontdoor_custom_domain" "www" {
 
   tls {
     certificate_type = "ManagedCertificate"
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
@@ -723,6 +772,10 @@ resource "azurerm_cdn_frontdoor_origin_group" "this" {
     additional_latency_in_milliseconds = 0
     sample_size                        = 4
     successful_samples_required        = 3
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
@@ -746,6 +799,10 @@ resource "azurerm_cdn_frontdoor_origin" "kgateway" {
   priority                       = 1
   weight                         = 1000
   certificate_name_check_enabled = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_firewall_policy" "this" {
@@ -784,6 +841,10 @@ resource "azurerm_cdn_frontdoor_firewall_policy" "this" {
   }
 
   tags = local.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_route" "this" {
@@ -800,6 +861,10 @@ resource "azurerm_cdn_frontdoor_route" "this" {
   patterns_to_match               = ["/*"]
   supported_protocols             = ["Http", "Https"]
   link_to_default_domain          = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_route" "www" {
@@ -816,6 +881,10 @@ resource "azurerm_cdn_frontdoor_route" "www" {
   patterns_to_match               = ["/*"]
   supported_protocols             = ["Http", "Https"]
   link_to_default_domain          = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_security_policy" "this" {
@@ -844,5 +913,9 @@ resource "azurerm_cdn_frontdoor_security_policy" "this" {
         patterns_to_match = ["/*"]
       }
     }
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
