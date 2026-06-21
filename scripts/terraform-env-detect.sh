@@ -72,25 +72,14 @@ if [[ ${#changed_files[@]} -eq 0 ]]; then
 fi
 
 declare -A selected=()
-plan_all=0
 
 for file_path in "${changed_files[@]}"; do
-  if [[ "$file_path" == modules/* || "$file_path" == scripts/* || "$file_path" == .github/workflows/terraform-* || "$file_path" == .tflint.hcl ]]; then
-    plan_all=1
-    break
-  fi
-
   for env_name in "${known_envs[@]}"; do
     if [[ "$file_path" == "envs/${env_name}/"* ]]; then
       selected["$env_name"]=1
     fi
   done
 done
-
-if [[ $plan_all -eq 1 ]]; then
-  emit_json_array "${known_envs[@]}"
-  exit 0
-fi
 
 ordered=()
 for env_name in "${known_envs[@]}"; do

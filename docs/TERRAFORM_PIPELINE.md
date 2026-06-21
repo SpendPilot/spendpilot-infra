@@ -41,7 +41,7 @@ Environment detection is handled by `scripts/terraform-env-detect.sh`.
 
 Rules:
 - changes under `envs/<root>/` plan only that root
-- changes under `modules/`, `scripts/`, `.github/workflows/terraform-*.yml`, or `.tflint.hcl` plan all active roots
+- changes outside `envs/<root>/` do not auto-select any Terraform root
 - manual `workflow_dispatch` requires exactly one root input
 
 ## Plan artifact safety
