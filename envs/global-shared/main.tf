@@ -1,5 +1,4 @@
 locals {
-  name         = lower("${var.prefix}-${var.environment}")
   compact_name = substr(replace(lower("${var.prefix}${var.environment}"), "-", ""), 0, 18)
   tags = merge({
     application = "spendpilot"
