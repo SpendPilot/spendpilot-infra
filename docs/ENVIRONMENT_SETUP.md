@@ -2,13 +2,13 @@
 
 ## Required repository or organization variables
 
-Set these non-secret variables for `spendpilot-infra` as repository variables or organization variables:
+Set these shared Azure auth values for `spendpilot-infra` as repository secrets or organization secrets:
 
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
 
-Do not put these three only in GitHub Environments if you expect PR validation to work. PR jobs do not bind to `terraform-<env>` environments before the plan step, so environment-scoped variables are not available to `azure/login` there.
+Do not put these three only in GitHub Environments if you expect PR validation to work. PR jobs do not bind to `terraform-<env>` environments before the plan step, so environment-scoped secrets or variables are not available to `azure/login` there.
 
 Optional Azure Key Vault lookup variables:
 - `DEV_TERRAFORM_SECRETS_KEYVAULT_NAME`
