@@ -100,6 +100,9 @@ jobs:
 
       - name: Run Trivy IaC scan for changed root
         uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TF_VAR_postgres_admin_password: trivy-static-placeholder
+          TRIVY_SKIP_VERSION_CHECK: "true"
         with:
           scan-type: config
           scan-ref: envs/${{ matrix.environment }}
