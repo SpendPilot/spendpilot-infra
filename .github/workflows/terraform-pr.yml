@@ -90,7 +90,7 @@ jobs:
           mapfile -t envs < <(jq -r '.[]' <<< '${{ needs.detect-envs.outputs.envs }}')
 
           for environment in "${envs[@]}"; do
-            tflint --chdir="envs/$environment"
+            tflint --minimum-failure-severity=error --chdir="envs/$environment"
           done
 
   security-scan:
@@ -100,7 +100,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: aquasecurity/setup-trivy@v0.2.2
+      - uses: aquasecurity/setup-trivy@v0.2.6
 
       - name: Run Trivy IaC scan for changed roots
         id: trivy-scan
