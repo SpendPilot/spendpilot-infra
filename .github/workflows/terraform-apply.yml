@@ -96,7 +96,7 @@ jobs:
 
           if [[ "$missing" -ne 0 ]]; then
             echo "Set AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID as repository or organization variables." >&2
-            echo "Main workflow plan jobs also expect these shared values before any environment-gated apply step." >&2
+            echo "Main workflow plan jobs also expect these shared values before the apply step." >&2
             exit 1
           fi
 
@@ -217,7 +217,6 @@ jobs:
       fail-fast: false
       matrix:
         environment: ${{ fromJson(needs.detect-envs.outputs.envs) }}
-    environment: terraform-${{ matrix.environment }}
     concurrency:
       group: terraform-${{ matrix.environment }}
       cancel-in-progress: false
