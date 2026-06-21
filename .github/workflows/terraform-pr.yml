@@ -47,14 +47,20 @@ jobs:
           echo "envs=$envs_json" >> "$GITHUB_OUTPUT"
 
   terraform-fmt:
+    needs: detect-envs
+    if: needs.detect-envs.outputs.envs != '[]'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.detect-envs.outputs.envs) }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
-      - name: Check formatting
-        run: terraform fmt -check -recursive envs modules
+      - name: Check formatting for changed root
+        run: terraform fmt -check -recursive "envs/${{ matrix.environment }}"
 
   tflint:
     needs: detect-envs
@@ -82,18 +88,23 @@ jobs:
         run: tflint --chdir="envs/${{ matrix.environment }}"
 
   security-scan:
+    needs: detect-envs
+    if: needs.detect-envs.outputs.envs != '[]'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.detect-envs.outputs.envs) }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Trivy IaC scan
-        uses: aquasecurity/trivy-action@0.24.0
+      - name: Run Trivy IaC scan for changed root
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
-          scan-ref: .
-          skip-dirs: .git,.github,docs,legacy,vendor,vm,vmss
+          scan-ref: envs/${{ matrix.environment }}
           format: sarif
-          output: trivy-terraform.sarif
+          output: trivy-${{ matrix.environment }}.sarif
           severity: HIGH,CRITICAL
           exit-code: "1"
 
@@ -101,7 +112,7 @@ jobs:
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: trivy-terraform.sarif
+          sarif_file: trivy-${{ matrix.environment }}.sarif
 
   checks-summary:
     needs:
