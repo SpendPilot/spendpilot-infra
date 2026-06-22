@@ -38,6 +38,10 @@ resource "azurerm_postgresql_flexible_server" "this" {
     }
   }
 
+  lifecycle {
+    ignore_changes = [administrator_password]
+  }
+
   depends_on = [azurerm_private_dns_zone_virtual_network_link.this]
 }
 

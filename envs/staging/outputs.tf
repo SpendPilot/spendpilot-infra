@@ -1,5 +1,5 @@
 output "resource_group_name" {
-  value = module.resource_group.name
+  value = var.deploy_runtime_resources ? module.resource_group[0].name : null
 }
 
 output "public_host_name" {
@@ -38,27 +38,27 @@ output "frontdoor_origin_contract" {
 
 output "email_delivery_contract" {
   value = {
-    service_bus_fully_qualified_namespace = module.email_delivery.service_bus_fully_qualified_namespace
-    service_bus_queue_name                = module.email_delivery.service_bus_queue_name
-    function_app_name                     = module.email_delivery.function_app_name
-    function_app_default_hostname         = module.email_delivery.function_app_default_hostname
-    communication_service_endpoint        = module.email_delivery.communication_service_endpoint
-    email_sender_address                  = module.email_delivery.email_sender_address
+    service_bus_fully_qualified_namespace = var.deploy_runtime_resources ? module.email_delivery[0].service_bus_fully_qualified_namespace : null
+    service_bus_queue_name                = var.deploy_runtime_resources ? module.email_delivery[0].service_bus_queue_name : null
+    function_app_name                     = var.deploy_runtime_resources ? module.email_delivery[0].function_app_name : null
+    function_app_default_hostname         = var.deploy_runtime_resources ? module.email_delivery[0].function_app_default_hostname : null
+    communication_service_endpoint        = var.deploy_runtime_resources ? module.email_delivery[0].communication_service_endpoint : null
+    email_sender_address                  = var.deploy_runtime_resources ? module.email_delivery[0].email_sender_address : null
   }
 }
 
 output "service_bus_fully_qualified_namespace" {
-  value = module.email_delivery.service_bus_fully_qualified_namespace
+  value = var.deploy_runtime_resources ? module.email_delivery[0].service_bus_fully_qualified_namespace : null
 }
 
 output "service_bus_queue_name" {
-  value = module.email_delivery.service_bus_queue_name
+  value = var.deploy_runtime_resources ? module.email_delivery[0].service_bus_queue_name : null
 }
 
 output "email_sender_function_app_name" {
-  value = module.email_delivery.function_app_name
+  value = var.deploy_runtime_resources ? module.email_delivery[0].function_app_name : null
 }
 
 output "email_sender_address" {
-  value = module.email_delivery.email_sender_address
+  value = var.deploy_runtime_resources ? module.email_delivery[0].email_sender_address : null
 }

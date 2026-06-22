@@ -22,6 +22,12 @@ variable "resource_group_name" {
   default     = "rg-spendpilot-staging"
 }
 
+variable "deploy_runtime_resources" {
+  description = "Whether this staging root should actively create runtime resources. Keep false while staging remains an undeployed placeholder."
+  type        = bool
+  default     = false
+}
+
 variable "root_domain_name" {
   description = "Root public DNS domain used by staging routing."
   type        = string

@@ -21,7 +21,6 @@ on:
           - global-shared
           - identities
           - nonprod-shared
-          - staging
           - prod
 
 permissions:
@@ -31,9 +30,9 @@ permissions:
   security-events: write
 
 env:
-  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID != '' && vars.AZURE_CLIENT_ID || 'b02c203a-4b9d-4514-a023-fa240b50e0e4' }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID != '' && vars.AZURE_SUBSCRIPTION_ID || 'c00887fb-883e-4d8b-83ba-697054b43421' }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID != '' && vars.AZURE_TENANT_ID || '23009888-f985-4438-a6a8-32650f036be3' }}
   ARM_USE_AZUREAD: true
   ARM_USE_OIDC: true
   TF_IN_AUTOMATION: true
@@ -84,9 +83,9 @@ jobs:
       - name: Azure login with OIDC
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          tenant-id: ${{ env.ARM_TENANT_ID }}
+          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -97,10 +96,10 @@ jobs:
         env:
           DEV_POSTGRES_PASSWORD_FALLBACK: ${{ secrets.TF_VAR_POSTGRES_ADMIN_PASSWORD_DEV }}
           PROD_POSTGRES_PASSWORD_FALLBACK: ${{ secrets.TF_VAR_POSTGRES_ADMIN_PASSWORD_PROD }}
-          DEV_TERRAFORM_SECRETS_KEYVAULT_NAME: ${{ vars.DEV_TERRAFORM_SECRETS_KEYVAULT_NAME }}
-          DEV_POSTGRES_ADMIN_PASSWORD_SECRET_NAME: ${{ vars.DEV_POSTGRES_ADMIN_PASSWORD_SECRET_NAME }}
-          PROD_TERRAFORM_SECRETS_KEYVAULT_NAME: ${{ vars.PROD_TERRAFORM_SECRETS_KEYVAULT_NAME }}
-          PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME: ${{ vars.PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME }}
+          DEV_TERRAFORM_SECRETS_KEYVAULT_NAME: ${{ vars.DEV_TERRAFORM_SECRETS_KEYVAULT_NAME != '' && vars.DEV_TERRAFORM_SECRETS_KEYVAULT_NAME || 'spendpilot-dev-kv' }}
+          DEV_POSTGRES_ADMIN_PASSWORD_SECRET_NAME: ${{ vars.DEV_POSTGRES_ADMIN_PASSWORD_SECRET_NAME != '' && vars.DEV_POSTGRES_ADMIN_PASSWORD_SECRET_NAME || 'spend-control-database-url' }}
+          PROD_TERRAFORM_SECRETS_KEYVAULT_NAME: ${{ vars.PROD_TERRAFORM_SECRETS_KEYVAULT_NAME != '' && vars.PROD_TERRAFORM_SECRETS_KEYVAULT_NAME || 'spendpilot-prod-kv-2300' }}
+          PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME: ${{ vars.PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME != '' && vars.PROD_POSTGRES_ADMIN_PASSWORD_SECRET_NAME || 'spend-control-database-url' }}
         run: |
           set -euo pipefail
 
@@ -127,6 +126,13 @@ jobs:
           secret_value=""
           if [[ -n "$vault_name" && -n "$secret_name" ]]; then
             secret_value="$(az keyvault secret show --vault-name "$vault_name" --name "$secret_name" --query value -o tsv)"
+          fi
+
+          if [[ "$secret_value" == postgres://* || "$secret_value" == postgresql://* ]]; then
+            parsed_password="$(python3 -c 'import sys, urllib.parse as u; print(u.urlparse(sys.argv[1]).password or "")' "$secret_value")"
+            if [[ -n "$parsed_password" ]]; then
+              secret_value="$parsed_password"
+            fi
           fi
 
           if [[ -z "$secret_value" ]]; then
@@ -208,9 +214,9 @@ jobs:
       - name: Azure login with OIDC
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          tenant-id: ${{ env.ARM_TENANT_ID }}
+          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
 
       - uses: hashicorp/setup-terraform@v3
         with:
