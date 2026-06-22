@@ -204,7 +204,6 @@ jobs:
       fail-fast: false
       matrix:
         environment: ${{ fromJson(needs.detect-envs.outputs.envs) }}
-    environment: terraform-${{ matrix.environment }}
     concurrency:
       group: terraform-${{ matrix.environment }}
       cancel-in-progress: false
