@@ -131,7 +131,7 @@ variable "app_secret_name" {
 variable "key_vault_name" {
   description = "Optional override for the prod Key Vault name."
   type        = string
-  default     = ""
+  default     = "spendpilot-prod-kv-2300"
 }
 
 variable "key_vault_sku_name" {
@@ -287,13 +287,13 @@ variable "postgres_zone" {
 variable "postgres_ha_mode" {
   description = "PostgreSQL high availability mode."
   type        = string
-  default     = "ZoneRedundant"
+  default     = "Disabled"
 }
 
 variable "postgres_ha_standby_zone" {
   description = "Standby availability zone for PostgreSQL high availability."
   type        = string
-  default     = "2"
+  default     = ""
 }
 
 variable "postgres_geo_redundant_backup_enabled" {
@@ -510,7 +510,11 @@ variable "dev_auth_secret" {
 variable "frontend_redirect_uris" {
   description = "Frontend SPA redirect URIs."
   type        = list(string)
-  default     = ["http://localhost:3000/login"]
+  default = [
+    "http://localhost:3000/login",
+    "https://myfinagent.online/login",
+    "https://www.myfinagent.online/login",
+  ]
 }
 
 variable "frontdoor_sku_name" {

@@ -21,7 +21,6 @@ on:
           - global-shared
           - identities
           - nonprod-shared
-          - staging
           - prod
 
 permissions:

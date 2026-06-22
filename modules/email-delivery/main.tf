@@ -126,6 +126,13 @@ resource "azurerm_linux_function_app" "this" {
       python_version = var.function_python_version
     }
   }
+
+  lifecycle {
+    ignore_changes = [
+      app_settings["WEBSITE_ENABLE_SYNC_UPDATE_SITE"],
+      app_settings["WEBSITE_RUN_FROM_PACKAGE"],
+    ]
+  }
 }
 
 resource "azurerm_role_assignment" "backend_sender" {

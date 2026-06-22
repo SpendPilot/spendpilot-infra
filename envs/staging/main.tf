@@ -30,6 +30,7 @@ data "terraform_remote_state" "identities" {
 }
 
 module "resource_group" {
+  count  = var.deploy_runtime_resources ? 1 : 0
   source = "../../modules/resource-group"
 
   name     = var.resource_group_name
@@ -38,11 +39,12 @@ module "resource_group" {
 }
 
 module "email_delivery" {
+  count  = var.deploy_runtime_resources ? 1 : 0
   source = "../../modules/email-delivery"
 
   name                         = "${var.prefix}-${var.environment}"
-  location                     = module.resource_group.location
-  resource_group_name          = module.resource_group.name
+  location                     = module.resource_group[0].location
+  resource_group_name          = module.resource_group[0].name
   tags                         = local.tags
   github_actions_principal_id  = try(data.terraform_remote_state.identities.outputs.github_actions_service_principal_object_id, "")
   email_data_location          = var.email_data_location

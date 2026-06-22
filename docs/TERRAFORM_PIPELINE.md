@@ -23,9 +23,10 @@ This repository uses two GitHub Actions workflows:
 - `global-shared`
 - `identities`
 - `nonprod-shared`
-- `staging`
 - `dev`
 - `prod`
+
+`staging` remains in the repository as a placeholder root, but it is intentionally excluded from GitHub Actions validation and apply until a real staging footprint exists in Azure.
 
 ## Root configuration model
 
@@ -84,7 +85,6 @@ Create these GitHub Environments:
 - `terraform-global-shared`
 - `terraform-identities`
 - `terraform-nonprod-shared`
-- `terraform-staging`
 - `terraform-dev`
 - `terraform-prod`
 

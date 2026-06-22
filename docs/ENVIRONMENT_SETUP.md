@@ -29,7 +29,6 @@ Create:
 - `terraform-global-shared`
 - `terraform-identities`
 - `terraform-nonprod-shared`
-- `terraform-staging`
 - `terraform-dev`
 - `terraform-prod`
 
@@ -37,9 +36,10 @@ Recommended approvals:
 - `terraform-global-shared`: approval required
 - `terraform-identities`: approval required
 - `terraform-nonprod-shared`: approval required
-- `terraform-staging`: approval required
 - `terraform-dev`: optional
 - `terraform-prod`: required
+
+`staging` is currently a placeholder root and is intentionally excluded from GitHub Actions plan/apply until live staging resources exist in Azure.
 
 ## Azure OIDC setup
 

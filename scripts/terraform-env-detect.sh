@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-known_envs=(dev global-shared identities nonprod-shared staging prod)
+known_envs=(dev global-shared identities nonprod-shared prod)
 
 manual_env=""
 base_ref=""

@@ -6,9 +6,11 @@ Active Terraform roots:
 - `envs/global-shared`
 - `envs/identities`
 - `envs/nonprod-shared`
-- `envs/staging`
 - `envs/dev`
 - `envs/prod`
+
+Inactive placeholder root:
+- `envs/staging`
 
 Supporting folders:
 - `modules/`
