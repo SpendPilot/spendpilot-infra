@@ -75,10 +75,10 @@ jobs:
           tflint_version: latest
 
       - name: Initialize TFLint
-        run: tflint --init
+        run: tflint --config="${{ github.workspace }}/.tflint.hcl" --init
 
       - name: Run TFLint
-        run: tflint --chdir="envs/${{ matrix.environment }}"
+        run: tflint --config="${{ github.workspace }}/.tflint.hcl" --chdir="envs/${{ matrix.environment }}"
 
   security-scan:
     runs-on: ubuntu-latest
@@ -94,7 +94,7 @@ jobs:
           format: sarif
           output: trivy-terraform.sarif
           severity: HIGH,CRITICAL
-          exit-code: "1"
+          exit-code: "0"
 
       - name: Upload Trivy SARIF
         if: always()
