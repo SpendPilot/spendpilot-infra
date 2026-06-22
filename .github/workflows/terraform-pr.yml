@@ -131,6 +131,8 @@ jobs:
       - security-scan
     if: needs.detect-envs.outputs.envs != '[]'
     runs-on: ubuntu-latest
+    env:
+      INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
     strategy:
       fail-fast: false
       matrix:
@@ -242,14 +244,12 @@ jobs:
           retention-days: 5
 
       - name: Setup Infracost
-        if: ${{ secrets.INFRACOST_API_KEY != '' }}
+        if: ${{ env.INFRACOST_API_KEY != '' }}
         uses: infracost/actions/setup@v3
 
       - name: Generate Infracost comment
-        if: ${{ secrets.INFRACOST_API_KEY != '' }}
+        if: ${{ env.INFRACOST_API_KEY != '' }}
         shell: bash
-        env:
-          INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
         run: |
           infracost breakdown \
             --path="envs/${{ matrix.environment }}/plan.json" \
@@ -257,7 +257,7 @@ jobs:
             --out-file="envs/${{ matrix.environment }}/infracost.md"
 
       - name: Comment Infracost on PR
-        if: ${{ secrets.INFRACOST_API_KEY != '' }}
+        if: ${{ env.INFRACOST_API_KEY != '' }}
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: infracost-${{ matrix.environment }}
