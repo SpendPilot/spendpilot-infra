@@ -175,6 +175,12 @@ variable "key_vault_dev_auth_secret_name" {
   default     = "spend-control-dev-auth-secret"
 }
 
+variable "key_vault_secrets_officer_principal_id" {
+  description = "Stable Microsoft Entra object ID that should retain Key Vault Secrets Officer on the dev vault."
+  type        = string
+  default     = "26aed7c2-6718-47f1-997c-ab154ea36be0"
+}
+
 variable "private_cluster_enabled" {
   description = "Whether to create a private AKS control plane."
   type        = bool

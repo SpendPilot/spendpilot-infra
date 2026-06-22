@@ -408,7 +408,7 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
 resource "azurerm_role_assignment" "key_vault_secrets_officer_current_user" {
   scope                = azurerm_key_vault.workload.id
   role_definition_name = "Key Vault Secrets Officer"
-  principal_id         = data.azurerm_client_config.current.object_id
+  principal_id         = trimspace(var.key_vault_secrets_officer_principal_id) != "" ? trimspace(var.key_vault_secrets_officer_principal_id) : data.azurerm_client_config.current.object_id
 }
 
 resource "time_sleep" "wait_for_key_vault_rbac" {
