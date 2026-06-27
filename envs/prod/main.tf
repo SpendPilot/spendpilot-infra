@@ -1397,6 +1397,12 @@ resource "azurerm_cdn_frontdoor_origin" "kgateway" {
   priority                       = 1
   weight                         = 1000
   certificate_name_check_enabled = true
+  private_link {
+    location               = var.location
+    private_link_target_id = local.gateway_private_link_service_id
+    request_message        = var.frontdoor_private_link_request_message
+    target_type            = ""
+  }
 
   lifecycle {
     prevent_destroy = true
