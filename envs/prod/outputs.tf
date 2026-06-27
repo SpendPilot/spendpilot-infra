@@ -218,8 +218,8 @@ output "frontdoor_origin_contract" {
     namespace            = var.namespace
     origin_hostname      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (trimspace(try(data.external.gateway[0].result.hostname, "")) != "" ? trimspace(data.external.gateway[0].result.hostname) : try(data.external.gateway[0].result.ip, null))
     origin_host_header   = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : (trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.external.gateway[0].result.hostname, data.external.gateway[0].result.ip, null))
-    gateway_public_ip    = try(data.external.gateway[0].result.ip, null)
-    gateway_public_fqdn  = trimspace(try(data.external.gateway[0].result.hostname, "")) != "" ? trimspace(data.external.gateway[0].result.hostname) : null
+    gateway_public_ip    = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.external.gateway[0].result.ip, null)
+    gateway_public_fqdn  = trimspace(var.frontdoor_origin_hostname_override) != "" ? null : (trimspace(try(data.external.gateway[0].result.hostname, "")) != "" ? trimspace(data.external.gateway[0].result.hostname) : null)
     health_probe_path    = "/health"
     http_port            = 80
     https_port           = 443
@@ -236,16 +236,16 @@ output "argocd_server_service_type" {
 }
 
 output "argocd_server_public_ip" {
-  value = try(data.external.argocd_server.result.ip, null)
+  value = trimspace(var.argocd_server_load_balancer_ip) != "" ? trimspace(var.argocd_server_load_balancer_ip) : try(data.external.argocd_server[0].result.ip, null)
 }
 
 output "argocd_server_public_hostname" {
-  value = try(data.external.argocd_server.result.hostname, null)
+  value = trimspace(var.argocd_server_load_balancer_ip) != "" ? null : try(data.external.argocd_server[0].result.hostname, null)
 }
 
 output "argocd_server_url" {
-  value = trimspace(try(data.external.argocd_server.result.hostname, "")) != "" ? "https://${trimspace(data.external.argocd_server.result.hostname)}" : try(
-    trimspace(data.external.argocd_server.result.ip) != "" ? "https://${trimspace(data.external.argocd_server.result.ip)}" : null,
+  value = trimspace(var.argocd_server_load_balancer_ip) != "" ? "https://${trimspace(var.argocd_server_load_balancer_ip)}" : trimspace(try(data.external.argocd_server[0].result.hostname, "")) != "" ? "https://${trimspace(data.external.argocd_server[0].result.hostname)}" : try(
+    trimspace(data.external.argocd_server[0].result.ip) != "" ? "https://${trimspace(data.external.argocd_server[0].result.ip)}" : null,
     null,
   )
 }

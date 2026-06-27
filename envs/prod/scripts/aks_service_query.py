@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import sys
 
@@ -6,8 +7,10 @@ import sys
 def main() -> int:
     query = json.load(sys.stdin)
 
+    az_cli = shutil.which("az") or shutil.which("az.cmd") or "az"
+
     cmd = [
-        "az",
+        az_cli,
         "aks",
         "command",
         "invoke",

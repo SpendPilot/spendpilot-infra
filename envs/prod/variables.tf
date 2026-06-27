@@ -89,7 +89,7 @@ variable "argocd_server_service_load_balancer_source_ranges" {
 variable "argocd_server_load_balancer_ip" {
   description = "Optional static public IP to assign to the Argo CD LoadBalancer service."
   type        = string
-  default     = ""
+  default     = "135.235.224.62"
 }
 
 variable "private_cluster_enabled" {
@@ -682,7 +682,7 @@ variable "frontdoor_auth_rate_limit_duration_minutes" {
 variable "frontdoor_origin_hostname_override" {
   description = "Optional explicit origin host name or IP for Front Door. If empty, Terraform reads the current gateway service address from Kubernetes."
   type        = string
-  default     = ""
+  default     = "4.224.237.131"
 }
 
 variable "frontdoor_apex_host_name" {
