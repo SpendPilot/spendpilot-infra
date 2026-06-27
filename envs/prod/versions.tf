@@ -19,13 +19,9 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
-    helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.15"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.32"
+    external = {
+      source  = "hashicorp/external"
+      version = "~> 2.3"
     }
     time = {
       source  = "hashicorp/time"
@@ -43,15 +39,3 @@ provider "azurerm" {
 }
 
 provider "azuread" {}
-
-provider "kubernetes" {
-  config_path    = pathexpand("~/.kube/config")
-  config_context = local.aks_context_name
-}
-
-provider "helm" {
-  kubernetes {
-    config_path    = pathexpand("~/.kube/config")
-    config_context = local.aks_context_name
-  }
-}

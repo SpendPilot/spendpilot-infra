@@ -26,7 +26,11 @@ Documentation:
 - `docs/SECRETS_AND_TFVARS.md`
 - `docs/ENVIRONMENT_SETUP.md`
 - `docs/VAULT_TERRAFORM.md`
+- `envs/prod/TERRAFORM_K8S_DECOUPLING_NOTES.md`
 
 Environment-specific non-secret configuration now lives in each root's `variables.tf` defaults. Only sensitive overrides such as `postgres_admin_password` should be passed at runtime through `TF_VAR_*`, Azure Key Vault, or GitHub Secrets.
 
 Legacy folders such as `legacy/`, `vm/`, and `vmss/` are intentionally not part of the new GitHub Actions pipeline.
+
+Prod-specific note:
+- `envs/prod` now supports a private-cluster-friendly workflow without requiring direct Kubernetes API connectivity from the GitHub runner.

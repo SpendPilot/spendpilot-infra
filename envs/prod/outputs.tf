@@ -10,6 +10,14 @@ output "aks_cluster_id" {
   value = module.aks_cluster.id
 }
 
+output "aks_cluster_fqdn" {
+  value = module.aks_cluster.fqdn
+}
+
+output "aks_cluster_private_fqdn" {
+  value = module.aks_cluster.private_fqdn
+}
+
 output "aks_oidc_issuer_url" {
   value = module.aks_cluster.oidc_issuer_url
 }
@@ -208,10 +216,10 @@ output "frontdoor_origin_contract" {
   value = {
     environment          = var.environment
     namespace            = var.namespace
-    origin_hostname      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (trimspace(try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, "")) != "" ? trimspace(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname) : try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null))
-    origin_host_header   = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : (trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null))
-    gateway_public_ip    = try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, null)
-    gateway_public_fqdn  = trimspace(try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, "")) != "" ? trimspace(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname) : null
+    origin_hostname      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (trimspace(try(data.external.gateway[0].result.hostname, "")) != "" ? trimspace(data.external.gateway[0].result.hostname) : try(data.external.gateway[0].result.ip, null))
+    origin_host_header   = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : (trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.external.gateway[0].result.hostname, data.external.gateway[0].result.ip, null))
+    gateway_public_ip    = try(data.external.gateway[0].result.ip, null)
+    gateway_public_fqdn  = trimspace(try(data.external.gateway[0].result.hostname, "")) != "" ? trimspace(data.external.gateway[0].result.hostname) : null
     health_probe_path    = "/health"
     http_port            = 80
     https_port           = 443
@@ -228,18 +236,54 @@ output "argocd_server_service_type" {
 }
 
 output "argocd_server_public_ip" {
-  value = try(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].ip, null)
+  value = try(data.external.argocd_server.result.ip, null)
 }
 
 output "argocd_server_public_hostname" {
-  value = try(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].hostname, null)
+  value = try(data.external.argocd_server.result.hostname, null)
 }
 
 output "argocd_server_url" {
-  value = trimspace(try(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].hostname, "")) != "" ? "https://${trimspace(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].hostname)}" : try(
-    trimspace(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].ip) != "" ? "https://${trimspace(data.kubernetes_service_v1.argocd_server.status[0].load_balancer[0].ingress[0].ip)}" : null,
+  value = trimspace(try(data.external.argocd_server.result.hostname, "")) != "" ? "https://${trimspace(data.external.argocd_server.result.hostname)}" : try(
+    trimspace(data.external.argocd_server.result.ip) != "" ? "https://${trimspace(data.external.argocd_server.result.ip)}" : null,
     null,
   )
+}
+
+output "azure_monitor_workspace_id" {
+  value = var.managed_prometheus_enabled ? azurerm_monitor_workspace.prometheus[0].id : null
+}
+
+output "azure_monitor_workspace_query_endpoint" {
+  value = var.managed_prometheus_enabled ? azurerm_monitor_workspace.prometheus[0].query_endpoint : null
+}
+
+output "managed_grafana_id" {
+  value = var.managed_grafana_enabled ? azurerm_dashboard_grafana.managed[0].id : null
+}
+
+output "managed_grafana_endpoint" {
+  value = var.managed_grafana_enabled ? azurerm_dashboard_grafana.managed[0].endpoint : null
+}
+
+output "ops_jumpbox_name" {
+  value = azurerm_linux_virtual_machine.ops_jumpbox.name
+}
+
+output "ops_jumpbox_resource_group_name" {
+  value = module.ops_resource_group.name
+}
+
+output "ops_jumpbox_public_ip" {
+  value = azurerm_public_ip.ops_jumpbox.ip_address
+}
+
+output "ops_jumpbox_private_ip" {
+  value = azurerm_network_interface.ops_jumpbox.private_ip_address
+}
+
+output "ops_jumpbox_ssh_command" {
+  value = "az ssh vm --resource-group ${module.ops_resource_group.name} --name ${azurerm_linux_virtual_machine.ops_jumpbox.name}"
 }
 
 output "gitops_values_contract" {
