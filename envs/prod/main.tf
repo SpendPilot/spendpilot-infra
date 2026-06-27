@@ -1153,6 +1153,7 @@ ${local.argocd_values}
 }
 
 data "external" "argocd_server" {
+  count   = trimspace(var.argocd_server_load_balancer_ip) == "" ? 1 : 0
   program = ["python", "${path.module}/scripts/aks_service_query.py"]
 
   query = {
