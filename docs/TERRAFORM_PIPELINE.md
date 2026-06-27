@@ -97,7 +97,9 @@ Plan jobs do not bind to protected environments, so approval gates only block ap
 
 ## Kubeconfig handling
 
-`dev` and `prod` refresh live Kubernetes data during plan/apply. The workflows pre-seed kubeconfig with `scripts/terraform-prime-kubeconfig.sh` before running Terraform.
+`dev` still pre-seeds kubeconfig with `scripts/terraform-prime-kubeconfig.sh` because that root refreshes live Kubernetes data directly.
+
+`prod` no longer depends on direct Kubernetes API access from the runner. Prod plan/apply uses Azure control-plane calls such as `az aks command invoke` and CLI-backed in-place orchestration for private-cluster operations, so the shared kubeconfig helper is an intentional no-op for prod.
 
 ## State handling
 

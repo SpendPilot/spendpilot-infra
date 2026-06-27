@@ -95,13 +95,139 @@ variable "argocd_server_load_balancer_ip" {
 variable "private_cluster_enabled" {
   description = "Whether to create a private AKS control plane."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "authorized_ip_ranges" {
   description = "Optional public IP ranges allowed to reach the AKS API server when the cluster is public."
   type        = list(string)
   default     = []
+}
+
+variable "aks_api_server_vnet_integration_enabled" {
+  description = "Enable API server VNet integration for the prod AKS control plane."
+  type        = bool
+  default     = true
+}
+
+variable "aks_private_cluster_public_fqdn_enabled" {
+  description = "Whether the private prod AKS cluster should retain a public FQDN."
+  type        = bool
+  default     = false
+}
+
+variable "aks_api_server_subnet_cidr" {
+  description = "Dedicated API server subnet CIDR for AKS API server VNet integration."
+  type        = string
+  default     = "10.40.40.0/28"
+}
+
+variable "managed_prometheus_enabled" {
+  description = "Enable Azure managed Prometheus scraping for the prod AKS cluster."
+  type        = bool
+  default     = true
+}
+
+variable "managed_prometheus_annotations_allowed" {
+  description = "Comma-separated Prometheus annotations allowed by the AKS managed metrics addon."
+  type        = string
+  default     = null
+}
+
+variable "managed_prometheus_labels_allowed" {
+  description = "Comma-separated Prometheus labels allowed by the AKS managed metrics addon."
+  type        = string
+  default     = null
+}
+
+variable "azure_monitor_workspace_name" {
+  description = "Optional explicit Azure Monitor workspace name override for managed Prometheus."
+  type        = string
+  default     = "spendpilot-prod-amw"
+}
+
+variable "managed_grafana_enabled" {
+  description = "Enable Azure Managed Grafana for the prod AKS cluster."
+  type        = bool
+  default     = true
+}
+
+variable "managed_grafana_name" {
+  description = "Optional explicit Azure Managed Grafana workspace name override."
+  type        = string
+  default     = "spendpilot-prod-grafana"
+}
+
+variable "managed_grafana_major_version" {
+  description = "Grafana major version for Azure Managed Grafana."
+  type        = string
+  default     = "12"
+}
+
+variable "aks_control_plane_identity_name" {
+  description = "User-assigned managed identity name used by the prod AKS control plane for API server VNet integration."
+  type        = string
+  default     = "spendpilot-prod-aks-uami"
+}
+
+variable "managed_grafana_public_network_access_enabled" {
+  description = "Whether the Azure Managed Grafana endpoint is reachable over public network access."
+  type        = bool
+  default     = true
+}
+
+variable "ops_resource_group_name" {
+  description = "Separate Azure resource group for the prod operations jumpbox."
+  type        = string
+  default     = "rg-spendpilot-prod-ops-au"
+}
+
+variable "ops_location" {
+  description = "Azure region for the prod operations jumpbox environment."
+  type        = string
+  default     = "Australia East"
+}
+
+variable "ops_vnet_cidr" {
+  description = "Virtual network CIDR for the prod operations jumpbox environment."
+  type        = string
+  default     = "11.0.0.0/16"
+}
+
+variable "ops_jumpbox_subnet_cidr" {
+  description = "Subnet CIDR for the prod operations jumpbox."
+  type        = string
+  default     = "11.0.1.0/24"
+}
+
+variable "ops_jumpbox_name" {
+  description = "Name of the prod operations jumpbox VM."
+  type        = string
+  default     = "spendpilot-prod-jumpbox-au"
+}
+
+variable "ops_jumpbox_vm_size" {
+  description = "VM size for the prod operations jumpbox."
+  type        = string
+  default     = "Standard_D2s_v3"
+}
+
+variable "ops_jumpbox_admin_username" {
+  description = "Admin username for the prod operations jumpbox."
+  type        = string
+  default     = "azureuser"
+}
+
+variable "ops_jumpbox_bootstrap_public_key" {
+  description = "Bootstrap SSH public key used only to satisfy Azure VM provisioning when AAD SSH login is enabled."
+  type        = string
+  default     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC/zXtsTNRiXRzkP3gcAotc4YfU1k4rUfV6LTQPbSI5bBjJOznIRrXBoaxv4LMMEEWHahK9ToXDSgC/t4sHC2n4msuDvtc9oRWUCTmdwIQRUAUznBfmkBMJq0yOpAX3798Tp2UfaAg/dwbojF24YyZk4msvDjvTLxNA0qOUs0VMfeHIM2W4yUWiQXshhqe41Ob+NBZ8zTei5JEBk7TU/eRshk4pPI6BCQyNJxkmj6bFGA97BM0Tm/i10NMNBxBOy5Cb/brwJFrFZda5glTyn1bbE5qmktidHmkMdot296rOzN5YGwJW3pcUj5ZxLjB9CCGeBEZvm7zw4m5F/zshVfgQcweJF5G6rpG+WHqhesKsQ9T9Va1wvlkQSIjCeDsc83RiZb73Urm95rO3Nm6ECt4OUUOdg3sngi8aRsRturV8jjt6n82pwhghZxDs+daQ4j2SM4HYqaHaZy+l6JvWjCiLbXnMgfnG3679gN+7GtuO4G8Do1j0SMwK5gXQl8b49+5At0RENqvBIdmRNTwTrkBH2NqD/+qMBUAnVwimuIEN5Rt7aNv7nOljcAynQkmErePqSR6+s9mR8t6IAwpaqbwU8udoPnRBOvTgpz6IMvJPdi4R7kHpBqPLVWpY7HSdj/Jpya30o4SBv1txeBmT2XRhjGxjLFgBzYth0qmEQN1zvw== lijaz@Lijaz_LAP"
+}
+
+variable "platform_operator_object_id" {
+  description = "Stable Entra object ID for the human platform operator who should retain Grafana admin and jumpbox VM admin rights."
+  type        = string
+  default     = "26aed7c2-6718-47f1-997c-ab154ea36be0"
 }
 
 variable "namespace" {

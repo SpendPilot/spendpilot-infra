@@ -1,6 +1,11 @@
 data "azurerm_client_config" "current" {}
 data "azuread_client_config" "current" {}
 
+data "azurerm_kubernetes_cluster" "existing" {
+  name                = "${var.prefix}-${var.environment}-aks"
+  resource_group_name = var.resource_group_name
+}
+
 data "terraform_remote_state" "global_shared" {
   backend = "azurerm"
 
@@ -75,6 +80,11 @@ module "network" {
   subnets = {
     "aks-subnet" = {
       address_prefixes = [var.aks_subnet_cidr]
+    }
+    "aks-apiserver-subnet" = {
+      address_prefixes   = [var.aks_api_server_subnet_cidr]
+      delegation_name    = "aks-apiserver"
+      delegation_service = "Microsoft.ContainerService/managedClusters"
     }
     "db-subnet" = {
       address_prefixes   = [var.db_subnet_cidr]
@@ -189,31 +199,429 @@ resource "azurerm_postgresql_flexible_server" "postgres_dr_replica" {
 module "aks_cluster" {
   source = "../../modules/aks-cluster"
 
-  name                               = "${local.name}-aks"
-  location                           = module.resource_group.location
-  resource_group_name                = module.resource_group.name
-  dns_prefix                         = "${local.name}-dns"
-  kubernetes_version                 = var.kubernetes_version
-  private_cluster_enabled            = var.private_cluster_enabled
-  authorized_ip_ranges               = var.authorized_ip_ranges
-  log_analytics_workspace_id         = module.log_analytics.id
-  system_subnet_id                   = module.network.subnet_ids["aks-subnet"]
-  user_subnet_id                     = module.network.subnet_ids["aks-subnet"]
-  system_node_vm_size                = var.system_node_vm_size
-  system_node_min_count              = var.system_node_min_count
-  system_node_max_count              = var.system_node_max_count
-  user_node_vm_size                  = var.user_node_vm_size
-  user_node_min_count                = var.user_node_min_count
-  user_node_max_count                = var.user_node_max_count
-  node_resource_group_name           = var.aks_node_resource_group_name
-  service_cidr                       = var.service_cidr
-  dns_service_ip                     = var.dns_service_ip
-  key_vault_secrets_provider_enabled = var.key_vault_secrets_provider_enabled
-  secret_rotation_enabled            = var.key_vault_secret_rotation_enabled
-  secret_rotation_interval           = var.key_vault_secret_rotation_interval
-  tags                               = local.tags
+  name                                = "${local.name}-aks"
+  location                            = module.resource_group.location
+  resource_group_name                 = module.resource_group.name
+  dns_prefix                          = "${local.name}-dns"
+  kubernetes_version                  = var.kubernetes_version
+  private_cluster_enabled             = var.private_cluster_enabled
+  private_cluster_public_fqdn_enabled = var.aks_private_cluster_public_fqdn_enabled
+  private_dns_zone_id                 = var.private_cluster_enabled ? "System" : null
+  authorized_ip_ranges                = var.authorized_ip_ranges
+  api_server_subnet_id                = var.aks_api_server_vnet_integration_enabled ? module.network.subnet_ids["aks-apiserver-subnet"] : null
+  api_server_vnet_integration_enabled = var.aks_api_server_vnet_integration_enabled
+  log_analytics_workspace_id          = module.log_analytics.id
+  system_subnet_id                    = module.network.subnet_ids["aks-subnet"]
+  user_subnet_id                      = module.network.subnet_ids["aks-subnet"]
+  system_node_vm_size                 = var.system_node_vm_size
+  system_node_min_count               = var.system_node_min_count
+  system_node_max_count               = var.system_node_max_count
+  user_node_vm_size                   = var.user_node_vm_size
+  user_node_min_count                 = var.user_node_min_count
+  user_node_max_count                 = var.user_node_max_count
+  node_resource_group_name            = var.aks_node_resource_group_name
+  service_cidr                        = var.service_cidr
+  dns_service_ip                      = var.dns_service_ip
+  cluster_identity_type               = "UserAssigned"
+  cluster_identity_ids                = [azurerm_user_assigned_identity.aks_control_plane.id]
+  monitor_metrics_enabled             = var.managed_prometheus_enabled
+  monitor_metrics_annotations_allowed = var.managed_prometheus_annotations_allowed
+  monitor_metrics_labels_allowed      = var.managed_prometheus_labels_allowed
+  key_vault_secrets_provider_enabled  = var.key_vault_secrets_provider_enabled
+  secret_rotation_enabled             = var.key_vault_secret_rotation_enabled
+  secret_rotation_interval            = var.key_vault_secret_rotation_interval
+  tags                                = local.tags
 
-  depends_on = [azurerm_log_analytics_solution.container_insights]
+  depends_on = [
+    azurerm_log_analytics_solution.container_insights,
+    azurerm_user_assigned_identity.aks_control_plane,
+    azurerm_role_assignment.aks_control_plane_node_subnet_network_contributor,
+    azurerm_role_assignment.aks_control_plane_api_server_subnet_network_contributor,
+  ]
+}
+
+resource "azurerm_monitor_workspace" "prometheus" {
+  count = var.managed_prometheus_enabled ? 1 : 0
+
+  name                = var.azure_monitor_workspace_name
+  location            = module.resource_group.location
+  resource_group_name = module.resource_group.name
+  tags                = local.tags
+}
+
+resource "azurerm_user_assigned_identity" "aks_control_plane" {
+  name                = var.aks_control_plane_identity_name
+  location            = module.resource_group.location
+  resource_group_name = module.resource_group.name
+  tags                = local.tags
+}
+
+resource "azurerm_dashboard_grafana" "managed" {
+  count = var.managed_grafana_enabled ? 1 : 0
+
+  name                          = var.managed_grafana_name
+  resource_group_name           = module.resource_group.name
+  location                      = module.resource_group.location
+  grafana_major_version         = var.managed_grafana_major_version
+  public_network_access_enabled = var.managed_grafana_public_network_access_enabled
+  tags                          = local.tags
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  azure_monitor_workspace_integrations {
+    resource_id = azurerm_monitor_workspace.prometheus[0].id
+  }
+}
+
+resource "azurerm_role_assignment" "grafana_monitor_reader" {
+  count = var.managed_grafana_enabled && var.managed_prometheus_enabled ? 1 : 0
+
+  scope                = azurerm_monitor_workspace.prometheus[0].id
+  role_definition_name = "Monitoring Data Reader"
+  principal_id         = azurerm_dashboard_grafana.managed[0].identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "grafana_admin_current_user" {
+  count = var.managed_grafana_enabled ? 1 : 0
+
+  scope                = azurerm_dashboard_grafana.managed[0].id
+  role_definition_name = "Grafana Admin"
+  principal_id         = var.platform_operator_object_id
+}
+
+resource "terraform_data" "aks_private_cluster" {
+  count = var.private_cluster_enabled ? 1 : 0
+
+  triggers_replace = {
+    cluster_name                          = module.aks_cluster.name
+    resource_group_name                   = module.resource_group.name
+    api_server_subnet_id                  = module.network.subnet_ids["aks-apiserver-subnet"]
+    public_fqdn_enabled                   = tostring(var.aks_private_cluster_public_fqdn_enabled)
+    legacy_node_role_assignment_id        = length(azurerm_role_assignment.aks_node_subnet_network_contributor) > 0 ? azurerm_role_assignment.aks_node_subnet_network_contributor[0].id : "system-assigned-not-used"
+    legacy_api_server_role_assignment_id  = length(azurerm_role_assignment.aks_api_server_subnet_network_contributor) > 0 ? azurerm_role_assignment.aks_api_server_subnet_network_contributor[0].id : "system-assigned-not-used"
+    control_plane_identity_id             = azurerm_user_assigned_identity.aks_control_plane.id
+    control_plane_node_role_assignment_id = azurerm_role_assignment.aks_control_plane_node_subnet_network_contributor.id
+    control_plane_api_role_assignment_id  = azurerm_role_assignment.aks_control_plane_api_server_subnet_network_contributor.id
+    acr_id                                = data.azurerm_container_registry.global_shared.id
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["PowerShell", "-Command"]
+    command     = <<-EOT
+      $cluster = az aks show --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} | ConvertFrom-Json
+      $expectedIdentityId = '${azurerm_user_assigned_identity.aks_control_plane.id}'
+      $identityType = [string]$cluster.identity.type
+      $userAssignedKeys = @()
+      if ($cluster.identity.userAssignedIdentities) {
+        $userAssignedKeys = @($cluster.identity.userAssignedIdentities.PSObject.Properties.Name)
+      }
+      $needsIdentityMigration = ($identityType -ne 'UserAssigned') -or (-not ($userAssignedKeys -contains $expectedIdentityId))
+
+      if ($needsIdentityMigration) {
+        az aks update `
+          --resource-group ${module.resource_group.name} `
+          --name ${module.aks_cluster.name} `
+          --enable-managed-identity `
+          --assign-identity $expectedIdentityId `
+          --yes `
+          --only-show-errors
+
+        az aks update `
+          --resource-group ${module.resource_group.name} `
+          --name ${module.aks_cluster.name} `
+          --attach-acr ${data.azurerm_container_registry.global_shared.id} `
+          --yes `
+          --only-show-errors
+
+        $cluster = az aks show --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} | ConvertFrom-Json
+      }
+
+      $needsVnetIntegration = -not [System.Convert]::ToBoolean($cluster.apiServerAccessProfile.enableVnetIntegration)
+      $needsPrivateMode = -not [System.Convert]::ToBoolean($cluster.apiServerAccessProfile.enablePrivateCluster)
+      $publicFqdnShouldRemainEnabled = ${var.aks_private_cluster_public_fqdn_enabled ? "$true" : "$false"}
+      $needsPublicFqdnDisable = [System.Convert]::ToBoolean($cluster.apiServerAccessProfile.enablePrivateClusterPublicFqdn) -and (-not $publicFqdnShouldRemainEnabled)
+
+      if ($needsVnetIntegration -or $needsPrivateMode) {
+        az aks update `
+          --resource-group ${module.resource_group.name} `
+          --name ${module.aks_cluster.name} `
+          --enable-apiserver-vnet-integration `
+          --apiserver-subnet-id ${module.network.subnet_ids["aks-apiserver-subnet"]} `
+          --enable-private-cluster `
+          --yes `
+          --only-show-errors
+
+        az aks stop `
+          --resource-group ${module.resource_group.name} `
+          --name ${module.aks_cluster.name} `
+          --only-show-errors
+
+        Start-Sleep -Seconds 900
+
+        az aks start `
+          --resource-group ${module.resource_group.name} `
+          --name ${module.aks_cluster.name} `
+          --only-show-errors
+
+        $cluster = az aks show --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} | ConvertFrom-Json
+      }
+
+      if ($needsPublicFqdnDisable) {
+        az aks update `
+          --resource-group ${module.resource_group.name} `
+          --name ${module.aks_cluster.name} `
+          --disable-public-fqdn `
+          --yes `
+          --only-show-errors
+      }
+    EOT
+  }
+
+  depends_on = [
+    module.aks_cluster,
+    azurerm_role_assignment.aks_node_subnet_network_contributor,
+    azurerm_role_assignment.aks_api_server_subnet_network_contributor,
+    azurerm_role_assignment.aks_control_plane_node_subnet_network_contributor,
+    azurerm_role_assignment.aks_control_plane_api_server_subnet_network_contributor,
+  ]
+}
+
+resource "terraform_data" "aks_managed_prometheus" {
+  count = var.managed_prometheus_enabled ? 1 : 0
+
+  triggers_replace = {
+    cluster_name         = module.aks_cluster.name
+    resource_group_name  = module.resource_group.name
+    monitor_workspace_id = azurerm_monitor_workspace.prometheus[0].id
+    labels_allowed       = var.managed_prometheus_labels_allowed != null ? var.managed_prometheus_labels_allowed : ""
+    annotations_allowed  = var.managed_prometheus_annotations_allowed != null ? var.managed_prometheus_annotations_allowed : ""
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["PowerShell", "-Command"]
+    command     = <<-EOT
+      $cluster = az aks show --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} | ConvertFrom-Json
+      $metricsEnabled = [System.Convert]::ToBoolean($cluster.azureMonitorProfile.metrics.enabled)
+      $workspaceId = [string]$cluster.azureMonitorProfile.metrics.azureMonitorWorkspaceResourceId
+      $expectedWorkspaceId = '${azurerm_monitor_workspace.prometheus[0].id}'
+      $needsUpdate = (-not $metricsEnabled) -or ($workspaceId -ne $expectedWorkspaceId)
+
+      if ($needsUpdate) {
+        $args = @(
+          'aks', 'update',
+          '--resource-group', '${module.resource_group.name}',
+          '--name', '${module.aks_cluster.name}',
+          '--enable-azure-monitor-metrics',
+          '--azure-monitor-workspace-resource-id', $expectedWorkspaceId,
+          '--yes',
+          '--only-show-errors'
+        )
+
+        if ('${var.managed_prometheus_labels_allowed != null ? var.managed_prometheus_labels_allowed : ""}' -ne '') {
+          $args += @('--ksm-metric-labels-allow-list', '${var.managed_prometheus_labels_allowed != null ? var.managed_prometheus_labels_allowed : ""}')
+        }
+
+        if ('${var.managed_prometheus_annotations_allowed != null ? var.managed_prometheus_annotations_allowed : ""}' -ne '') {
+          $args += @('--ksm-metric-annotations-allow-list', '${var.managed_prometheus_annotations_allowed != null ? var.managed_prometheus_annotations_allowed : ""}')
+        }
+
+        az @args
+      }
+    EOT
+  }
+
+  depends_on = [
+    module.aks_cluster,
+    azurerm_monitor_workspace.prometheus,
+  ]
+}
+
+module "ops_resource_group" {
+  source = "../../modules/resource-group"
+
+  name     = var.ops_resource_group_name
+  location = var.ops_location
+  tags     = local.tags
+}
+
+module "ops_network" {
+  source = "../../modules/network"
+
+  name                = "${local.name}-ops-au-vnet"
+  location            = module.ops_resource_group.location
+  resource_group_name = module.ops_resource_group.name
+  address_space       = [var.ops_vnet_cidr]
+  tags                = local.tags
+
+  subnets = {
+    "jumpbox-subnet" = {
+      address_prefixes = [var.ops_jumpbox_subnet_cidr]
+    }
+  }
+}
+
+resource "azurerm_virtual_network_peering" "ops_to_prod" {
+  name                      = "${local.name}-ops-to-prod"
+  resource_group_name       = module.ops_resource_group.name
+  virtual_network_name      = module.ops_network.virtual_network_name
+  remote_virtual_network_id = module.network.virtual_network_id
+}
+
+resource "azurerm_virtual_network_peering" "prod_to_ops" {
+  name                      = "${local.name}-prod-to-ops"
+  resource_group_name       = module.resource_group.name
+  virtual_network_name      = module.network.virtual_network_name
+  remote_virtual_network_id = module.ops_network.virtual_network_id
+}
+
+resource "azurerm_public_ip" "ops_jumpbox" {
+  name                = "${var.ops_jumpbox_name}-pip"
+  location            = module.ops_resource_group.location
+  resource_group_name = module.ops_resource_group.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = local.tags
+}
+
+resource "azurerm_network_security_group" "ops_jumpbox" {
+  name                = "${var.ops_jumpbox_name}-nsg"
+  location            = module.ops_resource_group.location
+  resource_group_name = module.ops_resource_group.name
+  tags                = local.tags
+
+  security_rule {
+    name                       = "AllowSshFromInternet"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "ops_jumpbox" {
+  subnet_id                 = module.ops_network.subnet_ids["jumpbox-subnet"]
+  network_security_group_id = azurerm_network_security_group.ops_jumpbox.id
+}
+
+resource "azurerm_network_interface" "ops_jumpbox" {
+  name                = "${var.ops_jumpbox_name}-nic"
+  location            = module.ops_resource_group.location
+  resource_group_name = module.ops_resource_group.name
+  tags                = local.tags
+
+  ip_configuration {
+    name                          = "primary"
+    subnet_id                     = module.ops_network.subnet_ids["jumpbox-subnet"]
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.ops_jumpbox.id
+  }
+}
+
+resource "azurerm_linux_virtual_machine" "ops_jumpbox" {
+  name                            = var.ops_jumpbox_name
+  location                        = module.ops_resource_group.location
+  resource_group_name             = module.ops_resource_group.name
+  size                            = var.ops_jumpbox_vm_size
+  admin_username                  = var.ops_jumpbox_admin_username
+  network_interface_ids           = [azurerm_network_interface.ops_jumpbox.id]
+  disable_password_authentication = true
+  custom_data                     = base64encode(local.ops_jumpbox_cloud_init)
+  tags                            = local.tags
+
+  admin_ssh_key {
+    username   = var.ops_jumpbox_admin_username
+    public_key = var.ops_jumpbox_bootstrap_public_key
+  }
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "StandardSSD_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts-gen2"
+    version   = "latest"
+  }
+
+  depends_on = [
+    azurerm_subnet_network_security_group_association.ops_jumpbox,
+    azurerm_virtual_network_peering.ops_to_prod,
+    azurerm_virtual_network_peering.prod_to_ops,
+  ]
+}
+
+resource "terraform_data" "aks_private_dns_ops_link" {
+  count = var.private_cluster_enabled ? 1 : 0
+
+  triggers_replace = {
+    cluster_name    = module.aks_cluster.name
+    resource_group  = module.resource_group.name
+    ops_vnet_id     = module.ops_network.virtual_network_id
+    link_name       = "${local.name}-aks-private-ops-link"
+    private_cluster = terraform_data.aks_private_cluster[0].id
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["PowerShell", "-Command"]
+    command     = <<-EOT
+      $cluster = az aks show --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} | ConvertFrom-Json
+      if (-not $cluster.privateFqdn) {
+        throw 'AKS private FQDN is not available after private cluster enablement.'
+      }
+
+      $zoneName = ([string]$cluster.privateFqdn).Substring(([string]$cluster.privateFqdn).IndexOf('.') + 1)
+      $zoneResourceGroup = [string]$cluster.nodeResourceGroup
+      $linkName = '${local.name}-aks-private-ops-link'
+      $existingLink = az network private-dns link vnet list `
+        --resource-group $zoneResourceGroup `
+        --zone-name $zoneName `
+        --query "[?name=='$linkName'].name | [0]" `
+        --output tsv
+
+      if (-not $existingLink) {
+        az network private-dns link vnet create `
+          --resource-group $zoneResourceGroup `
+          --zone-name $zoneName `
+          --name $linkName `
+          --virtual-network ${module.ops_network.virtual_network_id} `
+          --registration-enabled false `
+          --only-show-errors
+      }
+    EOT
+  }
+
+  depends_on = [
+    terraform_data.aks_private_cluster,
+    azurerm_virtual_network_peering.ops_to_prod,
+    azurerm_virtual_network_peering.prod_to_ops,
+  ]
+}
+
+resource "azurerm_virtual_machine_extension" "ops_jumpbox_aad_ssh" {
+  name                 = "AADSSHLoginForLinux"
+  virtual_machine_id   = azurerm_linux_virtual_machine.ops_jumpbox.id
+  publisher            = "Microsoft.Azure.ActiveDirectory"
+  type                 = "AADSSHLoginForLinux"
+  type_handler_version = "1.0"
+  tags                 = local.tags
+}
+
+resource "azurerm_role_assignment" "ops_jumpbox_vm_admin_login_current_user" {
+  scope                = azurerm_linux_virtual_machine.ops_jumpbox.id
+  role_definition_name = "Virtual Machine Administrator Login"
+  principal_id         = var.platform_operator_object_id
 }
 
 resource "azurerm_role_assignment" "acr_pull" {
@@ -345,45 +753,6 @@ resource "azurerm_federated_identity_credential" "workload" {
   subject                   = "system:serviceaccount:${var.namespace}:${var.service_account_name}"
 }
 
-resource "terraform_data" "aks_get_credentials" {
-  triggers_replace = {
-    cluster_name        = module.aks_cluster.name
-    resource_group_name = module.resource_group.name
-    context_name        = local.aks_context_name
-  }
-
-  provisioner "local-exec" {
-    interpreter = ["PowerShell", "-Command"]
-    command     = "az aks get-credentials --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --overwrite-existing"
-  }
-
-  depends_on = [module.aks_cluster]
-}
-
-resource "kubernetes_namespace_v1" "spendpilot" {
-  metadata {
-    name = var.namespace
-  }
-
-  depends_on = [terraform_data.aks_get_credentials]
-}
-
-resource "kubernetes_service_account_v1" "workload" {
-  metadata {
-    name      = var.service_account_name
-    namespace = kubernetes_namespace_v1.spendpilot.metadata[0].name
-    annotations = {
-      "azure.workload.identity/client-id" = azurerm_user_assigned_identity.workload.client_id
-    }
-  }
-
-  depends_on = [
-    terraform_data.aks_get_credentials,
-    kubernetes_namespace_v1.spendpilot,
-    azurerm_federated_identity_credential.workload,
-  ]
-}
-
 resource "azurerm_storage_account" "documents" {
   name                            = var.documents_storage_account_name
   resource_group_name             = module.resource_group.name
@@ -510,50 +879,6 @@ module "email_delivery" {
   manage_email_domain_association = var.email_domain_association_enabled
 }
 
-resource "kubernetes_config_map_v1" "spendpilot" {
-  metadata {
-    name      = var.app_config_map_name
-    namespace = kubernetes_namespace_v1.spendpilot.metadata[0].name
-  }
-
-  data = {
-    APP_ENV                                     = "production"
-    BACKEND_CORS_ORIGINS                        = var.backend_cors_origins
-    AUTH_MODE                                   = "entra"
-    AZURE_TENANT_ID                             = data.azurerm_client_config.current.tenant_id
-    AZURE_CLIENT_ID                             = azurerm_user_assigned_identity.workload.client_id
-    ENTRA_FRONTEND_CLIENT_ID                    = azuread_application.frontend_spa.client_id
-    ENTRA_BACKEND_CLIENT_ID                     = azuread_application.backend_api.client_id
-    ENTRA_BACKEND_AUDIENCE                      = var.backend_application_id_uri
-    ENTRA_AUTHORITY                             = var.auth_authority
-    ENTRA_ALLOWED_TENANT_IDS                    = var.allowed_tenant_ids
-    PLATFORM_ADMIN_EMAILS                       = var.platform_admin_emails
-    AZURE_AI_FOUNDRY_ENDPOINT                   = azurerm_cognitive_account.foundry.endpoint
-    AZURE_AI_PROJECT_ENDPOINT                   = ""
-    AZURE_AI_MODEL_DEPLOYMENT                   = azurerm_cognitive_deployment.foundry_model.name
-    AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT        = azurerm_cognitive_account.document_intelligence.endpoint
-    AZURE_STORAGE_ACCOUNT_URL                   = azurerm_storage_account.documents.primary_blob_endpoint
-    AZURE_STORAGE_CONTAINER_NAME                = azurerm_storage_container.documents.name
-    EMAIL_NOTIFICATIONS_ENABLED                 = "true"
-    AZURE_SERVICE_BUS_FULLY_QUALIFIED_NAMESPACE = module.email_delivery.service_bus_fully_qualified_namespace
-    AZURE_SERVICE_BUS_QUEUE_NAME                = module.email_delivery.service_bus_queue_name
-    FINANCE_DEFAULT_CURRENCY                    = var.finance_default_currency
-    NEXT_PUBLIC_API_BASE_URL                    = var.frontend_api_base_url
-    NEXT_PUBLIC_AUTH_MODE                       = "entra"
-    NEXT_PUBLIC_ENTRA_FRONTEND_CLIENT_ID        = azuread_application.frontend_spa.client_id
-    NEXT_PUBLIC_ENTRA_BACKEND_CLIENT_ID         = azuread_application.backend_api.client_id
-    NEXT_PUBLIC_ENTRA_BACKEND_AUDIENCE          = var.backend_application_id_uri
-    NEXT_PUBLIC_ENTRA_API_SCOPE                 = "${var.backend_application_id_uri}/access_as_user"
-    NEXT_PUBLIC_ENTRA_AUTHORITY                 = var.auth_authority
-  }
-
-  depends_on = [
-    terraform_data.aks_get_credentials,
-    kubernetes_namespace_v1.spendpilot,
-    azuread_application.frontend_spa,
-    azuread_application.backend_api,
-  ]
-}
 
 resource "azuread_application" "backend_api" {
   display_name     = "${local.name}-backend-api"
@@ -695,100 +1020,163 @@ resource "terraform_data" "gateway_api_crds" {
     }
   }
 
-  depends_on = [terraform_data.aks_get_credentials]
+  depends_on = [module.aks_cluster]
 }
 
-resource "helm_release" "kgateway_crds" {
-  name      = "kgateway-crds"
-  chart     = "${path.root}/../../vendor/kgateway/kgateway-crds"
-  namespace = "kgateway-system"
+resource "terraform_data" "workload_bootstrap" {
+  triggers_replace = {
+    cluster_name   = module.aks_cluster.name
+    manifest_sha   = sha256(local.workload_bootstrap_manifest)
+    resource_group = module.resource_group.name
+  }
 
-  create_namespace = true
+  provisioner "local-exec" {
+    interpreter = ["PowerShell", "-Command"]
+    command     = <<-EOT
+      $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('spendpilot-prod-bootstrap-' + [System.Guid]::NewGuid().ToString('N'))
+      New-Item -ItemType Directory -Path $tmp | Out-Null
+      try {
+        $manifest = @'
+${local.workload_bootstrap_manifest}
+'@
+        Set-Content -Path (Join-Path $tmp 'bootstrap.yaml') -Value $manifest -NoNewline
+        Push-Location $tmp
+        az aks command invoke --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --file . --command "kubectl apply -f bootstrap.yaml"
+        Pop-Location
+      } finally {
+        if (Get-Location | Select-Object -ExpandProperty Path | ForEach-Object { $_ -eq $tmp }) { Pop-Location }
+        if (Test-Path $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
+      }
+    EOT
+  }
 
   depends_on = [
-    terraform_data.aks_get_credentials,
-    terraform_data.gateway_api_crds,
-  ]
-}
-
-resource "helm_release" "kgateway" {
-  name      = "kgateway"
-  chart     = "${path.root}/../../vendor/kgateway/kgateway"
-  namespace = "kgateway-system"
-
-  create_namespace = true
-  values = [
-    yamlencode({
-      image = {
-        tag = var.kgateway_version
-      }
-      controller = {
-        image = {
-          tag = var.kgateway_version
-        }
-      }
-    }),
-  ]
-
-  depends_on = [
-    terraform_data.aks_get_credentials,
-    helm_release.kgateway_crds,
-  ]
-}
-
-resource "helm_release" "argocd" {
-  name       = "argocd"
-  repository = "https://argoproj.github.io/argo-helm"
-  chart      = "argo-cd"
-  version    = var.argocd_chart_version
-  namespace  = var.argocd_namespace
-
-  create_namespace = true
-  timeout          = 900
-  wait             = true
-
-  values = [
-    yamlencode({
-      server = {
-        service = {
-          type                     = var.argocd_server_service_type
-          annotations              = var.argocd_server_service_annotations
-          loadBalancerIP           = trimspace(var.argocd_server_load_balancer_ip) != "" ? trimspace(var.argocd_server_load_balancer_ip) : null
-          loadBalancerSourceRanges = length(var.argocd_server_service_load_balancer_source_ranges) > 0 ? var.argocd_server_service_load_balancer_source_ranges : null
-        }
-      }
-    }),
-  ]
-
-  depends_on = [
-    terraform_data.aks_get_credentials,
     module.aks_cluster,
+    azurerm_federated_identity_credential.workload,
+    azuread_application.frontend_spa,
+    azuread_application.backend_api,
+    module.email_delivery,
+    azurerm_storage_container.documents,
+    azurerm_cognitive_deployment.foundry_model,
   ]
 }
 
-resource "time_sleep" "wait_for_argocd_service" {
-  depends_on      = [helm_release.argocd]
-  create_duration = "90s"
-}
-
-data "kubernetes_service_v1" "argocd_server" {
-  metadata {
-    name      = local.argocd_server_service_name
-    namespace = var.argocd_namespace
+resource "terraform_data" "kgateway_crds" {
+  triggers_replace = {
+    cluster_name     = module.aks_cluster.name
+    gateway_api_crds = terraform_data.gateway_api_crds.id
+    kgateway_version = var.kgateway_version
+    resource_group   = module.resource_group.name
   }
 
-  depends_on = [time_sleep.wait_for_argocd_service]
-}
-
-data "kubernetes_service_v1" "gateway" {
-  count = local.frontdoor_enabled && trimspace(var.frontdoor_origin_hostname_override) == "" ? 1 : 0
-
-  metadata {
-    name      = "spend-control-gateway"
-    namespace = var.namespace
+  provisioner "local-exec" {
+    interpreter = ["PowerShell", "-Command"]
+    command     = <<-EOT
+      $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('spendpilot-prod-kgateway-crds-' + [System.Guid]::NewGuid().ToString('N'))
+      New-Item -ItemType Directory -Path $tmp | Out-Null
+      try {
+        Copy-Item -Path '${path.root}/../../vendor/kgateway/kgateway-crds' -Destination (Join-Path $tmp 'kgateway-crds') -Recurse
+        Push-Location $tmp
+        az aks command invoke --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --file . --command "helm upgrade --install kgateway-crds ./kgateway-crds --namespace kgateway-system --create-namespace"
+        Pop-Location
+      } finally {
+        if (Get-Location | Select-Object -ExpandProperty Path | ForEach-Object { $_ -eq $tmp }) { Pop-Location }
+        if (Test-Path $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
+      }
+    EOT
   }
 
-  depends_on = [terraform_data.aks_get_credentials]
+  depends_on = [terraform_data.gateway_api_crds]
+}
+
+resource "terraform_data" "kgateway" {
+  triggers_replace = {
+    cluster_name     = module.aks_cluster.name
+    kgateway_values  = sha256(local.kgateway_values)
+    kgateway_release = terraform_data.kgateway_crds.id
+    resource_group   = module.resource_group.name
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["PowerShell", "-Command"]
+    command     = <<-EOT
+      $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('spendpilot-prod-kgateway-' + [System.Guid]::NewGuid().ToString('N'))
+      New-Item -ItemType Directory -Path $tmp | Out-Null
+      try {
+        $values = @'
+${local.kgateway_values}
+'@
+        Set-Content -Path (Join-Path $tmp 'kgateway-values.yaml') -Value $values -NoNewline
+        Copy-Item -Path '${path.root}/../../vendor/kgateway/kgateway' -Destination (Join-Path $tmp 'kgateway') -Recurse
+        Push-Location $tmp
+        az aks command invoke --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --file . --command "helm upgrade --install kgateway ./kgateway --namespace kgateway-system --create-namespace -f kgateway-values.yaml"
+        Pop-Location
+      } finally {
+        if (Get-Location | Select-Object -ExpandProperty Path | ForEach-Object { $_ -eq $tmp }) { Pop-Location }
+        if (Test-Path $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
+      }
+    EOT
+  }
+
+  depends_on = [terraform_data.kgateway_crds]
+}
+
+resource "terraform_data" "argocd" {
+  triggers_replace = {
+    argocd_chart_version = var.argocd_chart_version
+    argocd_values_sha    = sha256(local.argocd_values)
+    cluster_name         = module.aks_cluster.name
+    resource_group       = module.resource_group.name
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["PowerShell", "-Command"]
+    command     = <<-EOT
+      $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('spendpilot-prod-argocd-' + [System.Guid]::NewGuid().ToString('N'))
+      New-Item -ItemType Directory -Path $tmp | Out-Null
+      try {
+        $values = @'
+${local.argocd_values}
+'@
+        Set-Content -Path (Join-Path $tmp 'argocd-values.yaml') -Value $values -NoNewline
+        Push-Location $tmp
+        az aks command invoke --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --file . --command "helm repo add argo https://argoproj.github.io/argo-helm && helm repo update && helm upgrade --install argocd argo/argo-cd --version ${var.argocd_chart_version} --namespace ${var.argocd_namespace} --create-namespace -f argocd-values.yaml --wait --timeout 15m"
+        Pop-Location
+      } finally {
+        if (Get-Location | Select-Object -ExpandProperty Path | ForEach-Object { $_ -eq $tmp }) { Pop-Location }
+        if (Test-Path $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
+      }
+    EOT
+  }
+
+  depends_on = [terraform_data.workload_bootstrap]
+}
+
+data "external" "argocd_server" {
+  program = ["python", "${path.module}/scripts/aks_service_query.py"]
+
+  query = {
+    cluster_name        = module.aks_cluster.name
+    resource_group_name = module.resource_group.name
+    namespace           = var.argocd_namespace
+    service_name        = local.argocd_server_service_name
+  }
+
+  depends_on = [terraform_data.argocd]
+}
+
+data "external" "gateway" {
+  count   = local.frontdoor_enabled && trimspace(var.frontdoor_origin_hostname_override) == "" ? 1 : 0
+  program = ["python", "${path.module}/scripts/aks_service_query.py"]
+
+  query = {
+    cluster_name        = module.aks_cluster.name
+    resource_group_name = module.resource_group.name
+    namespace           = var.namespace
+    service_name        = "spend-control-gateway"
+  }
+
+  depends_on = [terraform_data.kgateway]
 }
 
 resource "azurerm_cdn_frontdoor_profile" "this" {
@@ -881,14 +1269,14 @@ resource "azurerm_cdn_frontdoor_origin" "kgateway" {
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this[0].id
   enabled                       = true
   host_name = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (
-    trimspace(try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname, "")) != "" ? trimspace(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname) : trimspace(try(data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip, ""))
+    trimspace(try(data.external.gateway[0].result.hostname, "")) != "" ? trimspace(data.external.gateway[0].result.hostname) : trimspace(try(data.external.gateway[0].result.ip, ""))
   )
   http_port  = 80
   https_port = 443
   origin_host_header = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : (
     trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(
-      data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].hostname,
-      data.kubernetes_service_v1.gateway[0].status[0].load_balancer[0].ingress[0].ip,
+      data.external.gateway[0].result.hostname,
+      data.external.gateway[0].result.ip,
     )
   )
   priority                       = 1
@@ -1013,4 +1401,32 @@ resource "azurerm_cdn_frontdoor_security_policy" "this" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+resource "azurerm_role_assignment" "aks_node_subnet_network_contributor" {
+  count = contains(["SystemAssigned", "SystemAssigned, UserAssigned"], data.azurerm_kubernetes_cluster.existing.identity[0].type) ? 1 : 0
+
+  scope                = module.network.subnet_ids["aks-subnet"]
+  role_definition_name = "Network Contributor"
+  principal_id         = data.azurerm_kubernetes_cluster.existing.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "aks_api_server_subnet_network_contributor" {
+  count = contains(["SystemAssigned", "SystemAssigned, UserAssigned"], data.azurerm_kubernetes_cluster.existing.identity[0].type) ? 1 : 0
+
+  scope                = module.network.subnet_ids["aks-apiserver-subnet"]
+  role_definition_name = "Network Contributor"
+  principal_id         = data.azurerm_kubernetes_cluster.existing.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "aks_control_plane_node_subnet_network_contributor" {
+  scope                = module.network.subnet_ids["aks-subnet"]
+  role_definition_name = "Network Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks_control_plane.principal_id
+}
+
+resource "azurerm_role_assignment" "aks_control_plane_api_server_subnet_network_contributor" {
+  scope                = module.network.subnet_ids["aks-apiserver-subnet"]
+  role_definition_name = "Network Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks_control_plane.principal_id
 }

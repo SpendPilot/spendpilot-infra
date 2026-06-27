@@ -29,11 +29,7 @@ if [[ "$environment_name" == "dev" ]]; then
   exit 0
 fi
 
-resource_group_name="rg-spendpilot-prod"
-cluster_name="spendpilot-prod-aks"
-
-az aks get-credentials \
-  --resource-group "$resource_group_name" \
-  --name "$cluster_name" \
-  --overwrite-existing \
-  1>/dev/null
+# Prod no longer depends on direct Kubernetes provider access from the runner.
+# Keep this as an intentional no-op so GitHub Actions can continue to call the
+# helper uniformly without requiring network reachability to the private API.
+exit 0

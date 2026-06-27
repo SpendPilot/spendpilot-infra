@@ -1,19 +1,21 @@
 resource "azurerm_kubernetes_cluster" "this" {
-  name                              = var.name
-  location                          = var.location
-  resource_group_name               = var.resource_group_name
-  node_resource_group               = var.node_resource_group_name
-  dns_prefix                        = var.dns_prefix
-  kubernetes_version                = var.kubernetes_version
-  sku_tier                          = "Standard"
-  private_cluster_enabled           = var.private_cluster_enabled
-  oidc_issuer_enabled               = true
-  workload_identity_enabled         = true
-  image_cleaner_enabled             = true
-  image_cleaner_interval_hours      = 48
-  azure_policy_enabled              = true
-  role_based_access_control_enabled = true
-  tags                              = var.tags
+  name                                = var.name
+  location                            = var.location
+  resource_group_name                 = var.resource_group_name
+  node_resource_group                 = var.node_resource_group_name
+  dns_prefix                          = var.dns_prefix
+  kubernetes_version                  = var.kubernetes_version
+  sku_tier                            = "Standard"
+  private_cluster_enabled             = var.private_cluster_enabled
+  private_cluster_public_fqdn_enabled = var.private_cluster_public_fqdn_enabled
+  private_dns_zone_id                 = var.private_dns_zone_id
+  oidc_issuer_enabled                 = true
+  workload_identity_enabled           = true
+  image_cleaner_enabled               = true
+  image_cleaner_interval_hours        = 48
+  azure_policy_enabled                = true
+  role_based_access_control_enabled   = true
+  tags                                = var.tags
 
   default_node_pool {
     name                 = "system"
@@ -31,7 +33,8 @@ resource "azurerm_kubernetes_cluster" "this" {
   }
 
   identity {
-    type = "SystemAssigned"
+    type         = var.cluster_identity_type
+    identity_ids = var.cluster_identity_type == "UserAssigned" ? var.cluster_identity_ids : null
   }
 
   oms_agent {
@@ -57,11 +60,32 @@ resource "azurerm_kubernetes_cluster" "this" {
   }
 
   dynamic "api_server_access_profile" {
-    for_each = var.private_cluster_enabled || length(var.authorized_ip_ranges) == 0 ? [] : [1]
+    for_each = (
+      length(var.authorized_ip_ranges) > 0 ||
+      var.api_server_subnet_id != null ||
+      var.api_server_vnet_integration_enabled != null
+    ) ? [1] : []
 
     content {
-      authorized_ip_ranges = var.authorized_ip_ranges
+      authorized_ip_ranges                = length(var.authorized_ip_ranges) > 0 ? var.authorized_ip_ranges : null
+      subnet_id                           = var.api_server_subnet_id
+      virtual_network_integration_enabled = var.api_server_vnet_integration_enabled
     }
+  }
+
+  dynamic "monitor_metrics" {
+    for_each = var.monitor_metrics_enabled == true ? [1] : []
+
+    content {
+      annotations_allowed = var.monitor_metrics_annotations_allowed
+      labels_allowed      = var.monitor_metrics_labels_allowed
+    }
+  }
+
+  lifecycle {
+    # Prod migrates the control plane identity in place via Azure CLI because API server VNet integration
+    # requires a user-assigned identity and the native provider path attempts destructive replacement.
+    ignore_changes = [identity]
   }
 }
 

@@ -19,12 +19,43 @@ variable "kubernetes_version" {
 }
 
 variable "private_cluster_enabled" {
-  type = bool
+  type    = bool
+  default = null
+}
+
+variable "cluster_identity_type" {
+  type    = string
+  default = "SystemAssigned"
+}
+
+variable "cluster_identity_ids" {
+  type    = list(string)
+  default = null
+}
+
+variable "private_cluster_public_fqdn_enabled" {
+  type    = bool
+  default = null
 }
 
 variable "authorized_ip_ranges" {
   type    = list(string)
   default = []
+}
+
+variable "private_dns_zone_id" {
+  type    = string
+  default = null
+}
+
+variable "api_server_subnet_id" {
+  type    = string
+  default = null
+}
+
+variable "api_server_vnet_integration_enabled" {
+  type    = bool
+  default = null
 }
 
 variable "log_analytics_workspace_id" {
@@ -93,4 +124,19 @@ variable "secret_rotation_enabled" {
 variable "secret_rotation_interval" {
   type    = string
   default = "2m"
+}
+
+variable "monitor_metrics_enabled" {
+  type    = bool
+  default = null
+}
+
+variable "monitor_metrics_annotations_allowed" {
+  type    = string
+  default = null
+}
+
+variable "monitor_metrics_labels_allowed" {
+  type    = string
+  default = null
 }
