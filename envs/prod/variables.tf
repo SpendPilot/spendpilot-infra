@@ -680,9 +680,39 @@ variable "frontdoor_auth_rate_limit_duration_minutes" {
 }
 
 variable "frontdoor_origin_hostname_override" {
-  description = "Optional explicit origin host name or IP for Front Door. If empty, Terraform reads the current gateway service address from Kubernetes."
+  description = "Optional explicit origin host name or IP for Front Door. If empty, Terraform uses the private gateway load balancer IP."
   type        = string
-  default     = "4.224.237.131"
+  default     = ""
+}
+
+variable "gateway_private_load_balancer_ip" {
+  description = "Static internal load balancer IP reserved for the prod kGateway Service."
+  type        = string
+  default     = "10.40.10.50"
+}
+
+variable "gateway_private_link_service_name" {
+  description = "Deterministic Azure Private Link Service name created for the prod kGateway Service."
+  type        = string
+  default     = "spendpilot-prod-gateway-pls"
+}
+
+variable "gateway_parameters_name" {
+  description = "GatewayParameters resource name used to make the prod kGateway Service internal-only."
+  type        = string
+  default     = "spendpilot-prod-gateway-params"
+}
+
+variable "gateway_name" {
+  description = "Kubernetes Gateway resource name that fronts the SpendPilot prod app."
+  type        = string
+  default     = "spend-control-gateway"
+}
+
+variable "frontdoor_private_link_request_message" {
+  description = "Approval request message attached to the Front Door managed private endpoint for the prod gateway."
+  type        = string
+  default     = "Approve Front Door access to the SpendPilot prod private gateway."
 }
 
 variable "frontdoor_apex_host_name" {

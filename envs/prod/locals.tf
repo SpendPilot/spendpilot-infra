@@ -84,7 +84,42 @@ ${indent(6, yamlencode(local.workload_config_map_data))}
     }
   })
 
+  gateway_private_origin_host = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : var.gateway_private_load_balancer_ip
+  gateway_private_link_service_id = format(
+    "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/privateLinkServices/%s",
+    data.azurerm_client_config.current.subscription_id,
+    data.azurerm_kubernetes_cluster.existing.node_resource_group,
+    var.gateway_private_link_service_name,
+  )
+
+  kgateway_gateway_parameters_manifest = <<-YAML
+    apiVersion: gateway.kgateway.dev/v1alpha1
+    kind: GatewayParameters
+    metadata:
+      name: ${var.gateway_parameters_name}
+      namespace: ${var.namespace}
+    spec:
+      kube:
+        service:
+          type: LoadBalancer
+        serviceOverlay:
+          metadata:
+            annotations:
+              service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+              service.beta.kubernetes.io/azure-load-balancer-internal-subnet: "aks-subnet"
+              service.beta.kubernetes.io/azure-load-balancer-ipv4: "${var.gateway_private_load_balancer_ip}"
+              service.beta.kubernetes.io/azure-pls-create: "true"
+              service.beta.kubernetes.io/azure-pls-name: "${var.gateway_private_link_service_name}"
+              service.beta.kubernetes.io/azure-pls-resource-group: "${data.azurerm_kubernetes_cluster.existing.node_resource_group}"
+  YAML
+
   kgateway_values = yamlencode({
+    gatewayClassParametersRefs = {
+      kgateway = {
+        name      = var.gateway_parameters_name
+        namespace = "kgateway-system"
+      }
+    }
     image = {
       tag = var.kgateway_version
     }
