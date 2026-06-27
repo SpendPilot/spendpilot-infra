@@ -308,7 +308,7 @@ resource "terraform_data" "aks_private_cluster" {
   }
 
   provisioner "local-exec" {
-    interpreter = ["PowerShell", "-Command"]
+    interpreter = ["pwsh", "-Command"]
     command     = <<-EOT
       $cluster = az aks show --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} | ConvertFrom-Json
       $expectedIdentityId = '${azurerm_user_assigned_identity.aks_control_plane.id}'
@@ -400,7 +400,7 @@ resource "terraform_data" "aks_managed_prometheus" {
   }
 
   provisioner "local-exec" {
-    interpreter = ["PowerShell", "-Command"]
+    interpreter = ["pwsh", "-Command"]
     command     = <<-EOT
       $cluster = az aks show --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} | ConvertFrom-Json
       $metricsEnabled = [System.Convert]::ToBoolean($cluster.azureMonitorProfile.metrics.enabled)
@@ -574,7 +574,7 @@ resource "terraform_data" "aks_private_dns_ops_link" {
   }
 
   provisioner "local-exec" {
-    interpreter = ["PowerShell", "-Command"]
+    interpreter = ["pwsh", "-Command"]
     command     = <<-EOT
       $cluster = az aks show --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} | ConvertFrom-Json
       if (-not $cluster.privateFqdn) {
@@ -1013,7 +1013,7 @@ resource "terraform_data" "gateway_api_crds" {
   }
 
   provisioner "local-exec" {
-    interpreter = ["PowerShell", "-Command"]
+    interpreter = ["pwsh", "-Command"]
     command     = "az aks command invoke --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --command \"kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v${var.gateway_api_version}/standard-install.yaml\""
     environment = {
       AZURE_CLI_DISABLE_CONNECTION_VERIFICATION = "1"
@@ -1031,7 +1031,7 @@ resource "terraform_data" "workload_bootstrap" {
   }
 
   provisioner "local-exec" {
-    interpreter = ["PowerShell", "-Command"]
+    interpreter = ["pwsh", "-Command"]
     command     = <<-EOT
       $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('spendpilot-prod-bootstrap-' + [System.Guid]::NewGuid().ToString('N'))
       New-Item -ItemType Directory -Path $tmp | Out-Null
@@ -1070,7 +1070,7 @@ resource "terraform_data" "kgateway_crds" {
   }
 
   provisioner "local-exec" {
-    interpreter = ["PowerShell", "-Command"]
+    interpreter = ["pwsh", "-Command"]
     command     = <<-EOT
       $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('spendpilot-prod-kgateway-crds-' + [System.Guid]::NewGuid().ToString('N'))
       New-Item -ItemType Directory -Path $tmp | Out-Null
@@ -1098,7 +1098,7 @@ resource "terraform_data" "kgateway" {
   }
 
   provisioner "local-exec" {
-    interpreter = ["PowerShell", "-Command"]
+    interpreter = ["pwsh", "-Command"]
     command     = <<-EOT
       $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('spendpilot-prod-kgateway-' + [System.Guid]::NewGuid().ToString('N'))
       New-Item -ItemType Directory -Path $tmp | Out-Null
@@ -1130,7 +1130,7 @@ resource "terraform_data" "argocd" {
   }
 
   provisioner "local-exec" {
-    interpreter = ["PowerShell", "-Command"]
+    interpreter = ["pwsh", "-Command"]
     command     = <<-EOT
       $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('spendpilot-prod-argocd-' + [System.Guid]::NewGuid().ToString('N'))
       New-Item -ItemType Directory -Path $tmp | Out-Null
