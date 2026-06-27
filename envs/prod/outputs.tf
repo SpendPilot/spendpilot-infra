@@ -216,10 +216,12 @@ output "frontdoor_origin_contract" {
   value = {
     environment          = var.environment
     namespace            = var.namespace
-    origin_hostname      = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (trimspace(try(data.external.gateway[0].result.hostname, "")) != "" ? trimspace(data.external.gateway[0].result.hostname) : try(data.external.gateway[0].result.ip, null))
-    origin_host_header   = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : (trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.external.gateway[0].result.hostname, data.external.gateway[0].result.ip, null))
-    gateway_public_ip    = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(data.external.gateway[0].result.ip, null)
-    gateway_public_fqdn  = trimspace(var.frontdoor_origin_hostname_override) != "" ? null : (trimspace(try(data.external.gateway[0].result.hostname, "")) != "" ? trimspace(data.external.gateway[0].result.hostname) : null)
+    origin_hostname      = local.gateway_private_origin_host
+    origin_host_header   = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : local.gateway_private_origin_host
+    gateway_private_ip   = local.gateway_private_origin_host
+    gateway_public_ip    = null
+    gateway_public_fqdn  = null
+    private_link_service = local.gateway_private_link_service_id
     health_probe_path    = "/health"
     http_port            = 80
     https_port           = 443

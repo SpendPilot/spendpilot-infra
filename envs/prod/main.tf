@@ -79,7 +79,8 @@ module "network" {
 
   subnets = {
     "aks-subnet" = {
-      address_prefixes = [var.aks_subnet_cidr]
+      address_prefixes                              = [var.aks_subnet_cidr]
+      private_link_service_network_policies_enabled = false
     }
     "aks-apiserver-subnet" = {
       address_prefixes   = [var.aks_api_server_subnet_cidr]
@@ -1089,6 +1090,62 @@ resource "terraform_data" "kgateway_crds" {
   depends_on = [terraform_data.gateway_api_crds]
 }
 
+resource "terraform_data" "kgateway_gateway_parameters" {
+  triggers_replace = {
+    cluster_name   = module.aks_cluster.name
+    manifest_sha   = sha256(local.kgateway_gateway_parameters_manifest)
+    kgateway_crds  = terraform_data.kgateway_crds.id
+    resource_group = module.resource_group.name
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["pwsh", "-Command"]
+    command     = <<-EOT
+      $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('spendpilot-prod-kgateway-params-' + [System.Guid]::NewGuid().ToString('N'))
+      New-Item -ItemType Directory -Path $tmp | Out-Null
+      try {
+        $kubeconfigPath = Join-Path $tmp 'kubeconfig'
+        $manifest = @'
+${local.kgateway_gateway_parameters_manifest}
+'@
+        Set-Content -Path (Join-Path $tmp 'gateway-parameters.yaml') -Value $manifest -NoNewline
+        az aks get-credentials --resource-group ${module.resource_group.name} --name ${module.aks_cluster.name} --admin --file $kubeconfigPath --overwrite-existing --only-show-errors | Out-Null
+
+        $kubeconfigB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Content -Raw $kubeconfigPath)))
+        $jumpboxScript = @"
+set -eu
+mkdir -p /tmp/spendpilot-private-cutover
+cat > /tmp/spendpilot-private-cutover/kubeconfig.b64 <<'KUBECONFIG_B64'
+$kubeconfigB64
+KUBECONFIG_B64
+base64 -d /tmp/spendpilot-private-cutover/kubeconfig.b64 > /tmp/spendpilot-private-cutover/config
+export KUBECONFIG=/tmp/spendpilot-private-cutover/config
+cat > /tmp/spendpilot-private-cutover/gateway-parameters.yaml <<'GATEWAY_PARAMETERS'
+$manifest
+GATEWAY_PARAMETERS
+kubectl apply -f /tmp/spendpilot-private-cutover/gateway-parameters.yaml
+"@
+        $jumpboxScriptPath = Join-Path $tmp 'jumpbox-gateway-parameters.sh'
+        Set-Content -Path $jumpboxScriptPath -Value $jumpboxScript -NoNewline
+
+        $args = @(
+          'vm', 'run-command', 'invoke',
+          '--resource-group', '${module.ops_resource_group.name}',
+          '--name', '${azurerm_linux_virtual_machine.ops_jumpbox.name}',
+          '--command-id', 'RunShellScript',
+          '--scripts', "@$jumpboxScriptPath",
+          '--only-show-errors'
+        )
+        & az @args | Out-Null
+      } finally {
+        if (Test-Path $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
+      }
+    EOT
+  }
+
+  depends_on = [terraform_data.kgateway_crds]
+}
+
 resource "terraform_data" "kgateway" {
   triggers_replace = {
     cluster_name     = module.aks_cluster.name
@@ -1118,7 +1175,85 @@ ${local.kgateway_values}
     EOT
   }
 
-  depends_on = [terraform_data.kgateway_crds]
+  depends_on = [terraform_data.kgateway_gateway_parameters]
+}
+
+resource "terraform_data" "app_gateway_private_parameters_ref" {
+  triggers_replace = {
+    cluster_name            = module.aks_cluster.name
+    gateway_name            = var.gateway_name
+    gateway_namespace       = var.namespace
+    gateway_parameters_name = var.gateway_parameters_name
+    kgateway_release        = terraform_data.kgateway.id
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["pwsh", "-Command"]
+    command     = <<-EOT
+      $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('spendpilot-prod-gateway-ref-' + [System.Guid]::NewGuid().ToString('N'))
+      New-Item -ItemType Directory -Path $tmp | Out-Null
+      try {
+        $manifest = @'
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ${var.gateway_name}
+  namespace: ${var.namespace}
+spec:
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: ${var.gateway_parameters_name}
+'@
+        Set-Content -Path (Join-Path $tmp 'gateway-parameters-ref.yaml') -Value $manifest -NoNewline
+        Push-Location $tmp
+        az aks command invoke `
+          --resource-group ${module.resource_group.name} `
+          --name ${module.aks_cluster.name} `
+          --file . `
+          --command "kubectl apply --server-side --force-conflicts -f gateway-parameters-ref.yaml" `
+          --only-show-errors | Out-Null
+        Pop-Location
+      } finally {
+        if (Get-Location | Select-Object -ExpandProperty Path | ForEach-Object { $_ -eq $tmp }) { Pop-Location }
+        if (Test-Path $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
+      }
+    EOT
+  }
+
+  depends_on = [terraform_data.kgateway]
+}
+
+resource "terraform_data" "gateway_private_link_service" {
+  triggers_replace = {
+    cluster_name                = module.aks_cluster.name
+    gateway_private_ip          = local.gateway_private_origin_host
+    private_link_service_id     = local.gateway_private_link_service_id
+    gateway_parameters_resource = terraform_data.kgateway_gateway_parameters.id
+    gateway_parameters_patch    = terraform_data.app_gateway_private_parameters_ref.id
+    kgateway_release            = terraform_data.kgateway.id
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["pwsh", "-Command"]
+    command     = <<-EOT
+      $attempt = 0
+      while ($attempt -lt 40) {
+        $attempt += 1
+        try {
+          az network private-link-service show --ids ${local.gateway_private_link_service_id} --only-show-errors | Out-Null
+          exit 0
+        } catch {
+          Start-Sleep -Seconds 15
+        }
+      }
+
+      throw "Timed out waiting for Private Link Service ${local.gateway_private_link_service_id} to be created."
+    EOT
+  }
+
+  depends_on = [terraform_data.app_gateway_private_parameters_ref]
 }
 
 resource "terraform_data" "argocd" {
@@ -1164,20 +1299,6 @@ data "external" "argocd_server" {
   }
 
   depends_on = [terraform_data.argocd]
-}
-
-data "external" "gateway" {
-  count   = local.frontdoor_enabled && trimspace(var.frontdoor_origin_hostname_override) == "" ? 1 : 0
-  program = ["python", "${path.module}/scripts/aks_service_query.py"]
-
-  query = {
-    cluster_name        = module.aks_cluster.name
-    resource_group_name = module.resource_group.name
-    namespace           = var.namespace
-    service_name        = "spend-control-gateway"
-  }
-
-  depends_on = [terraform_data.kgateway]
 }
 
 resource "azurerm_cdn_frontdoor_profile" "this" {
@@ -1266,27 +1387,91 @@ resource "azurerm_cdn_frontdoor_origin_group" "this" {
 resource "azurerm_cdn_frontdoor_origin" "kgateway" {
   count = local.frontdoor_enabled ? 1 : 0
 
-  name                          = "${local.name}-kgw"
-  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this[0].id
-  enabled                       = true
-  host_name = trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : (
-    trimspace(try(data.external.gateway[0].result.hostname, "")) != "" ? trimspace(data.external.gateway[0].result.hostname) : trimspace(try(data.external.gateway[0].result.ip, ""))
-  )
-  http_port  = 80
-  https_port = 443
-  origin_host_header = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : (
-    trimspace(var.frontdoor_origin_hostname_override) != "" ? trimspace(var.frontdoor_origin_hostname_override) : try(
-      data.external.gateway[0].result.hostname,
-      data.external.gateway[0].result.ip,
-    )
-  )
+  name                           = "${local.name}-kgw"
+  cdn_frontdoor_origin_group_id  = azurerm_cdn_frontdoor_origin_group.this[0].id
+  enabled                        = true
+  host_name                      = local.gateway_private_origin_host
+  http_port                      = 80
+  https_port                     = 443
+  origin_host_header             = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : local.gateway_private_origin_host
   priority                       = 1
   weight                         = 1000
-  certificate_name_check_enabled = false
+  certificate_name_check_enabled = true
 
   lifecycle {
     prevent_destroy = true
   }
+
+  depends_on = [terraform_data.gateway_private_link_service]
+}
+
+resource "terraform_data" "frontdoor_gateway_private_link" {
+  count = local.frontdoor_enabled ? 1 : 0
+
+  triggers_replace = {
+    frontdoor_origin_id      = azurerm_cdn_frontdoor_origin.kgateway[0].id
+    gateway_private_ip       = local.gateway_private_origin_host
+    origin_host_header       = local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : local.gateway_private_origin_host
+    private_link_service_id  = local.gateway_private_link_service_id
+    approval_request_message = var.frontdoor_private_link_request_message
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["pwsh", "-Command"]
+    command     = <<-EOT
+      $originUri = 'https://management.azure.com${azurerm_cdn_frontdoor_origin.kgateway[0].id}?api-version=2021-06-01'
+      $originBody = @{
+        properties = @{
+          hostName = '${local.gateway_private_origin_host}'
+          httpPort = 80
+          httpsPort = 443
+          originHostHeader = '${local.frontdoor_apex_host_name != "" ? local.frontdoor_apex_host_name : local.gateway_private_origin_host}'
+          priority = 1
+          weight = 1000
+          enabledState = 'Enabled'
+          enforceCertificateNameCheck = $true
+          sharedPrivateLinkResource = @{
+            privateLink = @{
+              id = '${local.gateway_private_link_service_id}'
+            }
+            groupId = $null
+            privateLinkLocation = '${var.location}'
+            requestMessage = '${var.frontdoor_private_link_request_message}'
+          }
+        }
+      } | ConvertTo-Json -Depth 10
+
+      az rest `
+        --method put `
+        --uri $originUri `
+        --headers "Content-Type=application/json" `
+        --body $originBody `
+        --only-show-errors | Out-Null
+
+      $connection = $null
+      $attempt = 0
+
+      while ($attempt -lt 40 -and -not $connection) {
+        $attempt += 1
+        $connections = az network private-endpoint-connection list --id ${local.gateway_private_link_service_id} --only-show-errors | ConvertFrom-Json
+        $connection = $connections | Where-Object { $_.privateLinkServiceConnectionState.status -eq 'Pending' -or $_.privateLinkServiceConnectionState.status -eq 'Approved' } | Select-Object -First 1
+
+        if (-not $connection) {
+          Start-Sleep -Seconds 15
+        }
+      }
+
+      if (-not $connection) {
+        throw "Timed out waiting for the Front Door private endpoint connection request."
+      }
+
+      if ($connection.privateLinkServiceConnectionState.status -ne 'Approved') {
+        az network private-endpoint-connection approve --id $connection.id --description '${var.frontdoor_private_link_request_message}' --only-show-errors | Out-Null
+      }
+    EOT
+  }
+
+  depends_on = [azurerm_cdn_frontdoor_origin.kgateway]
 }
 
 resource "azurerm_cdn_frontdoor_firewall_policy" "this" {
